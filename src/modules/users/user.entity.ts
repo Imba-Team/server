@@ -8,7 +8,6 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { Subscription } from '../subscription/subscription.entity';
 import { Exclude } from 'class-transformer';
 import { Book } from '../books/book.entity';
 
@@ -30,12 +29,6 @@ export class User {
   @Exclude()
   @Column({ select: false })
   password: string;
-
-  @OneToMany(() => Subscription, (subscription) => subscription.user)
-  subscription: Subscription[];
-
-  //   @Column({ nullable: true })
-  //   googleId?: string;
 
   // Add the books relationship here
   @OneToMany(() => Book, (book) => book.user)

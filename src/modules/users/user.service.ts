@@ -13,11 +13,6 @@ import * as bcrypt from 'bcrypt';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UserStatus } from 'src/common/interfaces/user.interface';
-import { Subscription } from '../subscription/subscription.entity';
-import {
-  SubscriptionMethod,
-  SubscriptionStatus,
-} from 'src/common/interfaces/subscription.interface';
 
 @Injectable()
 export class UsersService {
@@ -44,14 +39,6 @@ export class UsersService {
 
       const newUser = manager.create(User, userDto);
       const savedUser = await manager.save(User, newUser);
-
-      const subscription = manager.create(Subscription, {
-        user: savedUser,
-        status: SubscriptionStatus.INACTIVE,
-        subscriptionMethod: SubscriptionMethod.BANK_TRANSFER,
-      });
-
-      await manager.save(Subscription, subscription);
 
       return savedUser;
     });

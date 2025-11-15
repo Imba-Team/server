@@ -6,7 +6,6 @@ import { UsersModule } from './modules/users/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { SubscriptionModule } from './modules/subscription/subscription.module';
 import { BookModule } from './modules/books/book.module';
 
 @Module({
@@ -22,7 +21,6 @@ import { BookModule } from './modules/books/book.module';
     LoggerModule,
     UsersModule,
     AuthModule,
-    SubscriptionModule,
     BookModule,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
