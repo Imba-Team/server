@@ -7,7 +7,7 @@ import {
   IsDateString,
 } from 'class-validator';
 
-export class CreateBookDto {
+export class CreateModuleDto {
   @ApiProperty({ example: "The Hitchhiker's Guide to the Galaxy" })
   @IsString()
   @IsNotEmpty()

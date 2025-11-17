@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional } from 'class-validator';
 
-export class BookFilterDto {
+export class ModuleFilterDto {
   @ApiProperty({ example: 'Science Fiction', required: false })
   @IsString()
   @IsOptional()

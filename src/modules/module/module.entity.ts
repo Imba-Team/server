@@ -10,8 +10,8 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { User } from '../users/user.entity';
 
-@Entity('book')
-export class Book {
+@Entity('module')
+export class Module {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -19,34 +19,26 @@ export class Book {
   @Column({ unique: true })
   title: string;
 
-  @ApiProperty({ example: 'Douglas Adams' })
+  @ApiProperty({ example: 'Example of the description' })
   @Column()
-  author: string;
-
-  @ApiProperty({ example: '978-0345391803', required: false })
-  @Column({ unique: true, nullable: true })
-  isbn: string;
+  description: string;
 
   @ApiProperty({ example: 'Science Fiction', required: false })
   @Column({ nullable: true })
   genre: string;
 
-  @ApiProperty({ example: 300, required: false })
-  @Column({ type: 'int', nullable: true })
-  pages: number;
-
-  @ApiProperty({ example: '1979-10-12', required: false })
-  @Column({ type: 'date', nullable: true })
-  publishedDate: Date;
+  @ApiProperty({ example: true })
+  @Column({ default: true })
+  isPrivate: boolean;
 
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'The ID of the user who owns this book',
+    description: 'The ID of the user who owns this module',
   })
   @Column({ type: 'uuid' }) // This column will store the userId
   userId: string;
 
-  @ManyToOne(() => User, (user) => user.books, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, (user) => user.modules, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
 

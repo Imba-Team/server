@@ -9,7 +9,7 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
-import { Book } from '../books/book.entity';
+import { Module } from '../module/module.entity';
 
 @Entity('user')
 export class User {
@@ -30,9 +30,9 @@ export class User {
   @Column({ select: false })
   password: string;
 
-  // Add the books relationship here
-  @OneToMany(() => Book, (book) => book.user)
-  books: Book[];
+  // Add the modules relationship here
+  @OneToMany(() => Module, (module) => module.user)
+  modules: Module[];
 
   @Column({ default: 'user' })
   role: Role;

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
-export class BookResponseDto {
+export class ModuleResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef' })
   @Expose()
   id: string;
@@ -32,7 +32,7 @@ export class BookResponseDto {
 
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'ID of the user who owns this book',
+    description: 'ID of the user who owns this module',
   })
   @Expose()
   userId: string;

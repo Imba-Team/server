@@ -6,13 +6,13 @@ import { User } from './user.entity';
 import { Repository } from 'typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { AdminUsersController } from './admin-user.controller';
-import { Book } from '../books/book.entity';
+import { Module as ModuleEntity } from '../module/module.entity';
 
 @Module({
   imports: [
     AuthModule,
     TypeOrmModule.forFeature([User]),
-    TypeOrmModule.forFeature([Book]),
+    TypeOrmModule.forFeature([ModuleEntity]),
   ],
   controllers: [UsersController, AdminUsersController],
   providers: [UsersService, Repository<User>],

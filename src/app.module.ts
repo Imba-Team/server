@@ -6,7 +6,7 @@ import { UsersModule } from './modules/users/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { BookModule } from './modules/books/book.module';
+import { ModuleModule } from './modules/module/module.module';
 
 @Module({
   imports: [
@@ -21,7 +21,7 @@ import { BookModule } from './modules/books/book.module';
     LoggerModule,
     UsersModule,
     AuthModule,
-    BookModule,
+    ModuleModule,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],
