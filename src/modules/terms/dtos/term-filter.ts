@@ -2,18 +2,17 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsString, IsOptional } from 'class-validator';
 
 export class TermFilterDto {
-  @ApiProperty({ example: 'Science Fiction', required: false })
+  @ApiProperty({ example: 'not_studied', required: false })
   @IsString()
   @IsOptional()
-  genre?: string;
+  status?: 'not_studied' | 'in_progress' | 'completed';
 
-  @ApiProperty({ example: 'Adams', required: false })
-  @IsString()
+  @ApiProperty({ example: true, required: false })
   @IsOptional()
-  author?: string;
+  isStarred?: boolean;
 
-  @ApiProperty({ example: 'Hitchhiker', required: false })
+  @ApiProperty({ example: 'Photosynthesis', required: false })
   @IsString()
   @IsOptional()
-  title?: string;
+  term?: string;
 }

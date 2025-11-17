@@ -6,12 +6,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { Repository } from 'typeorm';
-import { UsersService } from '../users/user.service';
-import { User } from '../users/user.entity';
 import { Term } from './term.entity';
 import { CreateTermDto } from './dtos/create-term';
 import { TermFilterDto } from './dtos/term-filter';
 import { UpdateTermDto } from './dtos/update-term';
+import { Module } from '../module/module.entity';
 
 @Injectable()
 export class TermService {
@@ -19,40 +18,39 @@ export class TermService {
     private readonly logger: LoggerService,
     @InjectRepository(Term)
     private readonly termRepository: Repository<Term>,
-    // Inject the UserRepository or UsersService to validate moduleId
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    private readonly usersService: UsersService, // Can also use UsersService to check user existence
+    @InjectRepository(Module)
+    private readonly moduleRepository: Repository<Module>,
   ) {}
 
   /**
-   * Creates a new term record, attached to a specific user.
-   * Checks for existing term by title and author or ISBN to prevent duplicates.
+   * Creates a new term record, attached to a specific module.
+   * Checks for existing term by term and moduleId to prevent duplicates.
    * Validates if the provided moduleId exists.
    * @param createTermDto The data to create the term, including moduleId.
    * @returns The newly created term.
    */
   async create(moduleId: string, createTermDto: CreateTermDto): Promise<Term> {
     this.logger.log(
-      `Attempting to create a new term for module ${moduleId}: ${createTermDto.term}`,
+      `Attempting to create a new term: ${createTermDto.term} for module ${moduleId}`,
     );
 
-    // 1. Validate moduleId: Ensure the user exists
-    const userExists = await this.usersService.findById(moduleId); // This will throw NotFound if user doesn't exist
+    // 1. Validate moduleId: Ensure the module exists
+    const moduleExists = await this.moduleRepository.findOne({
+      where: { id: moduleId },
+    });
 
-    if (!userExists) {
-      this.logger.warn(`User with ID ${moduleId} does not exist.`);
-      throw new NotFoundException(`User with ID ${moduleId} not found.`);
+    if (!moduleExists) {
+      this.logger.warn(`Module with ID ${moduleId} does not exist.`);
+      throw new NotFoundException(`Module with ID ${moduleId} not found.`);
     }
 
-    // 2. Check for existing term by title and author OR by ISBN
+    // 2. Check for existing term by term and moduleId
     const existingTerm = await this.termRepository.findOne({
       where: [
         {
           term: createTermDto.term,
           moduleId: moduleId,
-        }, // Consider unique per user
-        // { isbn: createTermDto.isbn, moduleId: moduleId }, // Consider unique per user if applicable, or globally unique
+        },
       ],
     });
 
@@ -60,9 +58,7 @@ export class TermService {
       this.logger.warn(
         `Term: "${createTermDto.term}" (for module ${moduleId})" already exists.`,
       );
-      throw new ConflictException(
-        'Term with this title/author or ISBN already exists for this user.',
-      );
+      throw new ConflictException('Term already exists for this module.');
     }
 
     const newTerm = this.termRepository.create(createTermDto);
@@ -75,39 +71,39 @@ export class TermService {
 
   /**
    * Finds all terms with pagination, optional filtering, and potentially by a specific user.
-   * @param page The current page number.
-   * @param limit The number of items per page.
    * @param filter Optional filters (e.g., genre, author, title, moduleId).
    * @returns A paginated list of terms.
    */
   async findAll(
-    page: number = 1,
-    limit: number = 10,
     filter?: TermFilterDto & { moduleId?: string }, // Added moduleId to filter
   ) {
     const query = this.termRepository.createQueryBuilder('term');
     // TODO add more filters as needed
 
+    if (filter?.status) {
+      query.andWhere('term.status = :status', { status: filter.status });
+    }
+
+    if (filter?.isStarred !== undefined) {
+      query.andWhere('term.isStarred = :isStarred', {
+        isStarred: filter.isStarred,
+      });
+    }
+
     // Filter by moduleId if provided
     if (filter?.moduleId) {
       // Optionally, check if this user exists before filtering
-      // const userExists = await this.usersService.findById(filter.moduleId); // This would throw NotFound if user doesn't exist
+      // const userExists = await this.moduleRepository.findById(filter.moduleId); // This would throw NotFound if user doesn't exist
       query.andWhere('term.moduleId = :moduleId', {
         moduleId: filter.moduleId,
       });
     }
-
-    const offset = (page - 1) * limit;
-    query.skip(offset).take(limit);
 
     const [terms, total] = await query.getManyAndCount();
 
     return {
       data: terms,
       total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
     };
   }
 

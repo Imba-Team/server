@@ -4,7 +4,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsBoolean,
-  IsNumber,
   IsUUID,
 } from 'class-validator';
 
@@ -24,27 +23,12 @@ export class CreateTermDto {
   @ApiProperty({ example: 'not_studied', required: false })
   @IsString()
   @IsOptional()
-  status?: string;
+  status?: 'not_studied' | 'in_progress' | 'completed';
 
   @ApiProperty({ example: true, required: false })
   @IsBoolean()
   @IsOptional()
   isStarred?: boolean;
-
-  @ApiProperty({ example: '978-0345391803', required: false })
-  @IsString()
-  @IsOptional()
-  isbn?: string;
-
-  @ApiProperty({ example: 'Science Fiction', required: false })
-  @IsString()
-  @IsOptional()
-  genre?: string;
-
-  @ApiProperty({ example: 300, required: false })
-  @IsNumber()
-  @IsOptional()
-  pages?: number;
 
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',

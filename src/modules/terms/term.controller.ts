@@ -9,8 +9,6 @@ import {
   HttpCode,
   UseGuards,
   Query,
-  DefaultValuePipe,
-  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -112,25 +110,14 @@ export class TermController {
     type: [TermResponseDto],
   })
   async findAll(
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
     @Query() filter: TermFilterDto & { userId?: string }, // Combine with userId for query
   ): Promise<
     ResponseDto<{
       data: TermResponseDto[];
       total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
     }>
   > {
-    const {
-      data,
-      total,
-      page: currentPage,
-      limit: currentLimit,
-      totalPages,
-    } = await this.termService.findAll(page, limit, filter);
+    const { data, total } = await this.termService.findAll(filter);
 
     const transformedData = plainToInstance(TermResponseDto, data, {
       excludeExtraneousValues: true,
@@ -142,9 +129,6 @@ export class TermController {
       data: {
         data: transformedData,
         total,
-        page: currentPage,
-        limit: currentLimit,
-        totalPages,
       },
     };
   }
@@ -185,9 +169,8 @@ export class TermController {
   @ApiResponse({ status: 404, description: 'Term not found' })
   @ApiResponse({
     status: 400,
-    description: 'Bad Request (e.g., trying to change userId)',
+    description: 'Bad Request (e.g., trying to change moduleId)',
   })
-  @ApiResponse({ status: 409, description: 'Conflict: ISBN already exists' })
   async update(
     @Param('id') id: string,
     @Body() updateTermDto: UpdateTermDto,

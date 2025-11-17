@@ -23,21 +23,21 @@ export class Term {
   @Column()
   definition: string;
 
-  @ApiProperty({ example: 'not_studied', required: false })
-  @Column({ default: 'not_studied' })
-  status: string;
+  @ApiProperty({
+    example: 'not_studied',
+    enum: ['not_studied', 'in_progress', 'completed'],
+    required: false,
+  })
+  @Column({
+    type: 'enum',
+    enum: ['not_studied', 'in_progress', 'completed'],
+    default: 'not_studied',
+  })
+  status: 'not_studied' | 'in_progress' | 'completed';
 
   @ApiProperty({ example: true })
   @Column({ default: true })
   isStarred: boolean;
-
-  @ApiProperty({ example: 'Science Fiction', required: false })
-  @Column({ nullable: true })
-  genre: string;
-
-  @ApiProperty({ example: 300, required: false })
-  @Column({ type: 'int', nullable: true })
-  pages: number;
 
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',

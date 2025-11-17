@@ -24,7 +24,7 @@ async function bootstrap() {
 
   // Swagger setup
   const config = new DocumentBuilder()
-    .setTitle('NestJS Starter Template')
+    .setTitle('Imba Quizlet API')
     .setDescription('The API description for your starter template')
     .setVersion('1.0')
     .addBearerAuth() // Enables JWT token usage in Swagger UI
