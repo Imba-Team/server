@@ -6,9 +6,11 @@ import {
   UpdateDateColumn,
   ManyToOne,
   JoinColumn,
+  OneToMany,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { User } from '../users/user.entity';
+import { Term } from '../terms/term.entity';
 
 @Entity('module')
 export class Module {
@@ -41,6 +43,9 @@ export class Module {
   @ManyToOne(() => User, (user) => user.modules, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'userId' })
   user: User;
+
+  @OneToMany(() => Term, (term) => term.module, { onDelete: 'CASCADE' })
+  terms: Term[];
 
   @CreateDateColumn()
   createdAt: Date;

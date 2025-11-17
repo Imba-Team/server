@@ -7,6 +7,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ModuleModule } from './modules/module/module.module';
+import { TermModule } from './modules/terms/term.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ModuleModule } from './modules/module/module.module';
     UsersModule,
     AuthModule,
     ModuleModule,
+    TermModule,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],

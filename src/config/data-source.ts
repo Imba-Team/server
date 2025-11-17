@@ -4,6 +4,9 @@
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Module } from 'src/modules/module/module.entity';
+import { Term } from 'src/modules/terms/term.entity';
+import { User } from 'src/modules/users/user.entity';
 import { DataSource, DataSourceOptions } from 'typeorm';
 
 TypeOrmModule.forRootAsync({
@@ -18,7 +21,7 @@ TypeOrmModule.forRootAsync({
     username: configService.get('DATABASE_USER'),
     password: configService.get('DATABASE_PASSWORD'),
     database: configService.get('DATABASE_NAME'),
-    entities: [],
+    entities: [Module, Term, User],
     synchronize: true,
   }),
   dataSourceFactory: async (options: DataSourceOptions) => {

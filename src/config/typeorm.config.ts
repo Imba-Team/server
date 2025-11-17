@@ -1,6 +1,8 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-// import { User } from '../users/entities/user.entity';
+import { Module } from 'src/modules/module/module.entity';
+import { Term } from 'src/modules/terms/term.entity';
+import { User } from 'src/modules/users/user.entity';
 
 export const typeOrmConfigAsync = {
   imports: [ConfigModule],
@@ -12,7 +14,7 @@ export const typeOrmConfigAsync = {
     username: configService.get('DATABASE_USER'),
     password: configService.get('DATABASE_PASSWORD'),
     database: configService.get('DATABASE_NAME'),
-    // entities: [User],
+    entities: [Module, Term, User],
     synchronize: true, // NOTE: Need to disable in production and use migrations
     autoLoadEntities: true,
   }),
