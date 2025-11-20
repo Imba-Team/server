@@ -8,9 +8,8 @@ import {
   UpdateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { Subscription } from '../subscription/subscription.entity';
 import { Exclude } from 'class-transformer';
-import { Book } from '../books/book.entity';
+import { Module } from '../module/module.entity';
 
 @Entity('user')
 export class User {
@@ -31,15 +30,9 @@ export class User {
   @Column({ select: false })
   password: string;
 
-  @OneToMany(() => Subscription, (subscription) => subscription.user)
-  subscription: Subscription[];
-
-  //   @Column({ nullable: true })
-  //   googleId?: string;
-
-  // Add the books relationship here
-  @OneToMany(() => Book, (book) => book.user)
-  books: Book[];
+  // Add the modules relationship here
+  @OneToMany(() => Module, (module) => module.user)
+  modules: Module[];
 
   @Column({ default: 'user' })
   role: Role;

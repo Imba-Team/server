@@ -5,18 +5,16 @@ import { UsersService } from './user.service';
 import { User } from './user.entity';
 import { Repository } from 'typeorm';
 import { AuthModule } from '../auth/auth.module';
-import { Subscription } from '../subscription/subscription.entity';
-import { AdminUsersController } from './admin-user.controller';
-import { Book } from '../books/book.entity';
+// import { AdminUsersController } from './admin-user.controller';
+import { Module as ModuleEntity } from '../module/module.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User]),
     AuthModule,
-    TypeOrmModule.forFeature([Subscription]),
-    TypeOrmModule.forFeature([Book]),
+    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([ModuleEntity]),
   ],
-  controllers: [UsersController, AdminUsersController],
+  controllers: [UsersController],
   providers: [UsersService, Repository<User>],
   exports: [UsersService, Repository<User>],
 })
