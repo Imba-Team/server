@@ -12,18 +12,33 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 TypeOrmModule.forRootAsync({
   imports: [ConfigModule],
   inject: [ConfigService],
-  // Use useFactory, useClass, or useExisting
-  // to configure the DataSourceOptions.
-  useFactory: (configService: ConfigService) => ({
-    type: 'mysql',
-    host: configService.get('DATABASE_HOST'),
-    port: +configService.get('DATABASE_PORT'),
-    username: configService.get('DATABASE_USER'),
-    password: configService.get('DATABASE_PASSWORD'),
-    database: configService.get('DATABASE_NAME'),
-    entities: [Module, Term, User],
-    synchronize: true,
-  }),
+  useFactory: (configService: ConfigService): DataSourceOptions => {
+    const databaseUrl = configService.get<string>('DATABASE_URL');
+
+    const baseOptions: Partial<DataSourceOptions> = {
+      type: 'mysql',
+      entities: [Module, Term, User],
+      synchronize: true,
+    };
+
+    if (databaseUrl) {
+      // Use DATABASE_URL when provided (e.g. mysql://user:pass@host:port/dbname)
+      return {
+        ...baseOptions,
+        url: databaseUrl,
+      } as DataSourceOptions;
+    }
+
+    // Fallback to individual env vars
+    return {
+      ...baseOptions,
+      host: configService.get('DATABASE_HOST'),
+      port: parseInt(configService.get('DATABASE_PORT') || '3306', 10),
+      username: configService.get('DATABASE_USER'),
+      password: configService.get('DATABASE_PASSWORD'),
+      database: configService.get('DATABASE_NAME'),
+    } as DataSourceOptions;
+  },
   dataSourceFactory: async (options: DataSourceOptions) => {
     if (!options) {
       throw new Error('DataSource options are undefined');
