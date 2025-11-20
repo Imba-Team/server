@@ -24,16 +24,16 @@ export class Term {
   definition: string;
 
   @ApiProperty({
-    example: 'not_studied',
-    enum: ['not_studied', 'in_progress', 'completed'],
+    example: 'not_started',
+    enum: ['not_started', 'in_progress', 'completed'],
     required: false,
   })
   @Column({
     type: 'enum',
-    enum: ['not_studied', 'in_progress', 'completed'],
-    default: 'not_studied',
+    enum: ['not_started', 'in_progress', 'completed'],
+    default: 'not_started',
   })
-  status: 'not_studied' | 'in_progress' | 'completed';
+  status: 'not_started' | 'in_progress' | 'completed';
 
   @ApiProperty({ example: true })
   @Column({ default: true })

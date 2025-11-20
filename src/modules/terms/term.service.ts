@@ -22,13 +22,6 @@ export class TermService {
     private readonly moduleRepository: Repository<Module>,
   ) {}
 
-  /**
-   * Creates a new term record, attached to a specific module.
-   * Checks for existing term by term and moduleId to prevent duplicates.
-   * Validates if the provided moduleId exists.
-   * @param createTermDto The data to create the term, including moduleId.
-   * @returns The newly created term.
-   */
   async create(createTermDto: CreateTermDto): Promise<Term> {
     this.logger.log(
       `Attempting to create a new term: ${createTermDto.term} for module ${createTermDto.moduleId}`,
@@ -97,12 +90,6 @@ export class TermService {
     return { data: terms, total };
   }
 
-  /**
-   * Finds a single term by its ID.
-   * @param id The ID of the term.
-   * @returns The found term.
-   * @throws NotFoundException if the term is not found.
-   */
   async findById(id: string): Promise<Term> {
     this.logger.log(`Attempting to find term with ID: ${id}`);
     const term = await this.termRepository.findOne({ where: { id } });
@@ -115,15 +102,6 @@ export class TermService {
     return term;
   }
 
-  /**
-   * Updates an existing term record.
-   * @param id The ID of the term to update.
-   * @param updateTermDto The data to update the term.
-   * @returns The updated term.
-   * @throws NotFoundException if the term is not found.
-   * @throws ConflictException if the updated ISBN conflicts with another term.
-   * @throws BadRequestException if moduleId is attempted to be changed (as it should be immutable).
-   */
   async update(id: string, updateTermDto: UpdateTermDto): Promise<Term> {
     this.logger.log(`Attempting to update term with ID: ${id}`);
     const existingTerm = await this.termRepository.findOne({ where: { id } });
@@ -139,12 +117,53 @@ export class TermService {
     return updatedTerm;
   }
 
-  /**
-   * Deletes a term record.
-   * @param id The ID of the term to delete.
-   * @returns The deleted term.
-   * @throws NotFoundException if the term is not found.
-   */
+  async updateStatus(id: string, success: boolean): Promise<Term> {
+    this.logger.log(
+      `Attempting to ${success ? 'upgrade' : 'decrease'} status of term with ID: ${id}`,
+    );
+    const existingTerm = await this.termRepository.findOne({ where: { id } });
+
+    if (!existingTerm) {
+      this.logger.warn(`Term with ID ${id} not found for status update.`);
+      throw new NotFoundException(`Term with ID ${id} not found.`);
+    }
+
+    const currentStatus = existingTerm.status;
+    let newStatus = currentStatus;
+
+    // Upgrade rules (success === true):
+    // not_started -> in_progress
+    // in_progress -> completed
+    // completed -> completed (unchanged)
+    if (success) {
+      if (currentStatus === 'not_started') {
+        newStatus = 'in_progress';
+      } else if (currentStatus === 'in_progress') {
+        newStatus = 'completed';
+      }
+    } else {
+      // Decrease rules (success === false):
+      // completed -> in_progress
+      // in_progress -> in_progress (unchanged)
+      // not_started -> in_progress
+      newStatus = 'in_progress';
+    }
+
+    if (newStatus !== currentStatus) {
+      existingTerm.status = newStatus;
+      const updatedTerm = await this.termRepository.save(existingTerm);
+      this.logger.log(
+        `Successfully ${success ? 'upgraded' : 'decreased'} status of term with ID: ${id} to ${newStatus}`,
+      );
+      return updatedTerm;
+    }
+
+    this.logger.log(
+      `No status change required for term with ID: ${id} (status: ${currentStatus})`,
+    );
+    return existingTerm;
+  }
+
   async delete(id: string): Promise<Term> {
     this.logger.log(`Attempting to delete term with ID: ${id}`);
     const termToDelete = await this.findById(id); // This will throw NotFoundException if not found

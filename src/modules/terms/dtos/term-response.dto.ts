@@ -10,6 +10,10 @@ export class TermResponseDto {
   @Expose()
   term: string;
 
+  @ApiProperty({ example: 'not_started' })
+  @Expose()
+  status: string;
+
   @ApiProperty({ example: 'Example of the description' })
   @Expose()
   definition: string;

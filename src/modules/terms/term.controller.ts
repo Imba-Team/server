@@ -80,7 +80,7 @@ export class TermController {
     name: 'status',
     required: false,
     type: String,
-    enum: ['not_studied', 'in_progress', 'completed'],
+    enum: ['not_started', 'in_progress', 'completed'],
   })
   @ApiQuery({
     name: 'isStarred',
@@ -164,6 +164,34 @@ export class TermController {
     return {
       ok: true,
       message: 'Term updated successfully',
+      data,
+    };
+  }
+
+  @Post('update-status/:id')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Update the status of a term by ID' })
+  @ApiBody({ schema: { properties: { success: { type: 'boolean' } } } })
+  @ApiResponse({
+    status: 200,
+    description: 'Term status updated successfully',
+    type: TermResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Term not found' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body('success') success: boolean,
+  ): Promise<ResponseDto<TermResponseDto | null>> {
+    const updatedTerm = await this.termService.updateStatus(id, success);
+    const data = updatedTerm
+      ? plainToInstance(TermResponseDto, updatedTerm, {
+          excludeExtraneousValues: true,
+        })
+      : null;
+
+    return {
+      ok: true,
+      message: 'Term status updated successfully',
       data,
     };
   }
