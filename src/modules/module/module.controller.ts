@@ -113,6 +113,30 @@ export class ModuleController {
     };
   }
 
+  @Get('slug/:slug')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Get a module by slug' })
+  @ApiResponse({
+    status: 200,
+    description: 'Module returned successfully',
+    type: ModuleResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Module not found' })
+  async findBySlug(
+    @Param('slug') slug: string,
+  ): Promise<ResponseDto<ModuleResponseDto>> {
+    const module = await this.moduleService.findBySlug(slug);
+    const data = plainToInstance(ModuleResponseDto, module, {
+      excludeExtraneousValues: true,
+    });
+
+    return {
+      ok: true,
+      message: 'Module retrieved successfully',
+      data,
+    };
+  }
+
   @Patch(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Update a module by ID' })

@@ -11,6 +11,7 @@ import { User } from '../users/user.entity';
 import { Module } from './module.entity';
 import { CreateModuleDto } from './dtos/create-module';
 import { UpdateModuleDto } from './dtos/update-module';
+import { slugify } from 'src/common/utils/sligify';
 
 @Injectable()
 export class ModuleService {
@@ -59,10 +60,13 @@ export class ModuleService {
       );
     }
 
+    const slug = slugify(createModuleDto.title);
+
     // Attach the owner userId to the module before saving to satisfy NOT NULL constraint
     const newModule = this.moduleRepository.create({
       ...createModuleDto,
       userId,
+      slug,
     });
     const savedModule = await this.moduleRepository.save(newModule);
     this.logger.log(
@@ -88,6 +92,18 @@ export class ModuleService {
       throw new NotFoundException(`Module with ID ${id} not found.`);
     }
     this.logger.log(`Found module with ID: ${id}`);
+    return module;
+  }
+
+  async findBySlug(slug: string): Promise<Module> {
+    this.logger.log(`Attempting to find module with slug: ${slug}`);
+    const module = await this.moduleRepository.findOne({ where: { slug } });
+
+    if (!module) {
+      this.logger.warn(`Module with slug ${slug} not found.`);
+      throw new NotFoundException(`Module with slug ${slug} not found.`);
+    }
+    this.logger.log(`Found module with slug: ${slug}`);
     return module;
   }
 

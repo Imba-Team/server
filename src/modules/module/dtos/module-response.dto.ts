@@ -6,6 +6,10 @@ export class ModuleResponseDto {
   @Expose()
   id: string;
 
+  @ApiProperty({ example: 'module-name' })
+  @Expose()
+  slug: string;
+
   @ApiProperty({ example: 'Module Name' })
   @Expose()
   title: string;

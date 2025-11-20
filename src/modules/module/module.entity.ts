@@ -17,6 +17,10 @@ export class Module {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @ApiProperty({ example: 'module-1' })
+  @Column({ unique: true })
+  slug: string;
+
   @ApiProperty({ example: "The Hitchhiker's Guide to the Galaxy" })
   @Column({ unique: true })
   title: string;
