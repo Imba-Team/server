@@ -8,9 +8,6 @@ import {
   Param,
   HttpCode,
   UseGuards,
-  Query,
-  DefaultValuePipe,
-  ParseIntPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -18,7 +15,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBody,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { JwtGuard } from 'src/guards/jwt.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
@@ -30,7 +26,6 @@ import { IUser } from 'src/common/interfaces/user.interface';
 import { ModuleService } from './module.service';
 import { CreateModuleDto } from './dtos/create-module';
 import { ModuleResponseDto } from './dtos/module-response.dto';
-import { ModuleFilterDto } from './dtos/module-filter';
 import { UpdateModuleDto } from './dtos/update-module';
 
 @ApiTags('Modules')
@@ -79,73 +74,18 @@ export class ModuleController {
   @ApiOperation({
     summary: 'Get all modules with pagination and optional filters',
   })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
-  @ApiQuery({
-    name: 'genre',
-    required: false,
-    type: String,
-    example: 'Fantasy',
-  })
-  @ApiQuery({
-    name: 'author',
-    required: false,
-    type: String,
-    example: 'Tolstoy',
-  })
-  @ApiQuery({
-    name: 'title',
-    required: false,
-    type: String,
-    example: 'War and Peace',
-  })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    type: String,
-    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'Filter modules by owner user ID',
-  })
   @ApiResponse({
     status: 200,
     description: 'List of modules returned successfully',
     type: [ModuleResponseDto],
   })
-  async findAll(
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('limit', new DefaultValuePipe(10), ParseIntPipe) limit: number,
-    @Query() filter: ModuleFilterDto & { userId?: string }, // Combine with userId for query
-  ): Promise<
-    ResponseDto<{
-      data: ModuleResponseDto[];
-      total: number;
-      page: number;
-      limit: number;
-      totalPages: number;
-    }>
-  > {
-    const {
-      data,
-      total,
-      page: currentPage,
-      limit: currentLimit,
-      totalPages,
-    } = await this.moduleService.findAll(page, limit, filter);
-
-    const transformedData = plainToInstance(ModuleResponseDto, data, {
-      excludeExtraneousValues: true,
-    });
+  async findAll() {
+    const data = await this.moduleService.findAll();
 
     return {
       ok: true,
       message: 'Modules retrieved successfully',
-      data: {
-        data: transformedData,
-        total,
-        page: currentPage,
-        limit: currentLimit,
-        totalPages,
-      },
+      data,
     };
   }
 

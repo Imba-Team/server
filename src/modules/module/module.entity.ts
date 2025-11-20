@@ -25,10 +25,6 @@ export class Module {
   @Column()
   description: string;
 
-  @ApiProperty({ example: 'Science Fiction', required: false })
-  @Column({ nullable: true })
-  genre: string;
-
   @ApiProperty({ example: true })
   @Column({ default: true })
   isPrivate: boolean;

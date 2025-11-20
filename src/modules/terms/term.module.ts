@@ -4,6 +4,7 @@ import { TermController } from './term.controller';
 import { TermService } from './term.service';
 import { UsersModule } from '../users/user.module';
 import { User } from '../users/user.entity';
+import { Module as ModuleEntity } from '../module/module.entity';
 import { AuthModule } from '../auth/auth.module';
 import { Term } from './term.entity';
 
@@ -13,6 +14,7 @@ import { Term } from './term.entity';
     UsersModule,
     AuthModule,
     TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([ModuleEntity]),
   ],
   controllers: [TermController],
   providers: [TermService],

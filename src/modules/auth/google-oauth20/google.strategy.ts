@@ -22,17 +22,33 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   validate(
     _accessToken: string,
     _refreshToken: string,
-    profile: any,
+    profile: {
+      id: string;
+      name?: { givenName?: string; familyName?: string };
+      emails?: { value?: string }[];
+      photos?: { value?: string }[];
+    },
     done: VerifyCallback,
   ): any {
     const { id, name, emails, photos } = profile;
 
+    const email =
+      Array.isArray(emails) && emails[0] && typeof emails[0].value === 'string'
+        ? emails[0].value
+        : null;
+    const picture =
+      Array.isArray(photos) && photos[0] && typeof photos[0].value === 'string'
+        ? photos[0].value
+        : null;
+    const givenName = name?.givenName ?? '';
+    const familyName = name?.familyName ?? '';
+
     const user = {
       provider: 'google',
       providerId: id,
-      email: emails[0].value,
-      name: `${name.givenName} ${name.familyName}`,
-      picture: photos[0].value,
+      email,
+      name: `${givenName} ${familyName}`.trim(),
+      picture,
     };
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call

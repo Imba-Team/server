@@ -5,7 +5,7 @@ import { UsersService } from './user.service';
 import { User } from './user.entity';
 import { Repository } from 'typeorm';
 import { AuthModule } from '../auth/auth.module';
-import { AdminUsersController } from './admin-user.controller';
+// import { AdminUsersController } from './admin-user.controller';
 import { Module as ModuleEntity } from '../module/module.entity';
 
 @Module({
@@ -14,7 +14,7 @@ import { Module as ModuleEntity } from '../module/module.entity';
     TypeOrmModule.forFeature([User]),
     TypeOrmModule.forFeature([ModuleEntity]),
   ],
-  controllers: [UsersController, AdminUsersController],
+  controllers: [UsersController],
   providers: [UsersService, Repository<User>],
   exports: [UsersService, Repository<User>],
 })
