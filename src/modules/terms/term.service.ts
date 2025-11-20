@@ -8,7 +8,7 @@ import { LoggerService } from 'src/common/logger/logger.service';
 import { Repository } from 'typeorm';
 import { Term } from './term.entity';
 import { CreateTermDto } from './dtos/create-term';
-import { TermFilterDto } from './dtos/term-filter';
+import { TermFilterDto } from './dtos/term-filter.dto';
 import { UpdateTermDto } from './dtos/update-term';
 import { Module } from '../module/module.entity';
 
@@ -29,19 +29,23 @@ export class TermService {
    * @param createTermDto The data to create the term, including moduleId.
    * @returns The newly created term.
    */
-  async create(moduleId: string, createTermDto: CreateTermDto): Promise<Term> {
+  async create(createTermDto: CreateTermDto): Promise<Term> {
     this.logger.log(
-      `Attempting to create a new term: ${createTermDto.term} for module ${moduleId}`,
+      `Attempting to create a new term: ${createTermDto.term} for module ${createTermDto.moduleId}`,
     );
 
     // 1. Validate moduleId: Ensure the module exists
     const moduleExists = await this.moduleRepository.findOne({
-      where: { id: moduleId },
+      where: { id: createTermDto.moduleId },
     });
 
     if (!moduleExists) {
-      this.logger.warn(`Module with ID ${moduleId} does not exist.`);
-      throw new NotFoundException(`Module with ID ${moduleId} not found.`);
+      this.logger.warn(
+        `Module with ID ${createTermDto.moduleId} does not exist.`,
+      );
+      throw new NotFoundException(
+        `Module with ID ${createTermDto.moduleId} not found.`,
+      );
     }
 
     // 2. Check for existing term by term and moduleId
@@ -49,14 +53,14 @@ export class TermService {
       where: [
         {
           term: createTermDto.term,
-          moduleId: moduleId,
+          moduleId: createTermDto.moduleId,
         },
       ],
     });
 
     if (existingTerm) {
       this.logger.warn(
-        `Term: "${createTermDto.term}" (for module ${moduleId})" already exists.`,
+        `Term: "${createTermDto.term}" (for module ${createTermDto.moduleId})" already exists.`,
       );
       throw new ConflictException('Term already exists for this module.');
     }
@@ -69,31 +73,20 @@ export class TermService {
     return savedTerm;
   }
 
-  /**
-   * Finds all terms with pagination, optional filtering, and potentially by a specific user.
-   * @param filter Optional filters (e.g., genre, author, title, moduleId).
-   * @returns A paginated list of terms.
-   */
-  async findAll(
-    filter?: TermFilterDto & { moduleId?: string }, // Added moduleId to filter
-  ) {
+  async findAll(filter: TermFilterDto) {
     const query = this.termRepository.createQueryBuilder('term');
-    // TODO add more filters as needed
 
-    if (filter?.status) {
+    if (filter.status) {
       query.andWhere('term.status = :status', { status: filter.status });
     }
 
-    if (filter?.isStarred !== undefined) {
+    if (filter.isStarred !== undefined) {
       query.andWhere('term.isStarred = :isStarred', {
         isStarred: filter.isStarred,
       });
     }
 
-    // Filter by moduleId if provided
-    if (filter?.moduleId) {
-      // Optionally, check if this user exists before filtering
-      // const userExists = await this.moduleRepository.findById(filter.moduleId); // This would throw NotFound if user doesn't exist
+    if (filter.moduleId) {
       query.andWhere('term.moduleId = :moduleId', {
         moduleId: filter.moduleId,
       });
@@ -101,10 +94,7 @@ export class TermService {
 
     const [terms, total] = await query.getManyAndCount();
 
-    return {
-      data: terms,
-      total,
-    };
+    return { data: terms, total };
   }
 
   /**

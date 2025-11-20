@@ -6,36 +6,17 @@ export class TermResponseDto {
   @Expose()
   id: string;
 
-  @ApiProperty({ example: "The Hitchhiker's Guide to the Galaxy" })
+  @ApiProperty({ example: 'Module Name' })
   @Expose()
-  title: string;
+  term: string;
 
-  @ApiProperty({ example: 'Douglas Adams' })
+  @ApiProperty({ example: 'Example of the description' })
   @Expose()
-  author: string;
+  definition: string;
 
-  @ApiProperty({ example: '978-0345391803' })
+  @ApiProperty({ example: true })
   @Expose()
-  isbn: string;
-
-  @ApiProperty({ example: 'Science Fiction' })
-  @Expose()
-  genre: string;
-
-  @ApiProperty({ example: 300 })
-  @Expose()
-  pages: number;
-
-  @ApiProperty({ example: '1979-10-12T00:00:00.000Z' })
-  @Expose()
-  publishedDate: Date;
-
-  @ApiProperty({
-    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'ID of the user who owns this term',
-  })
-  @Expose()
-  userId: string;
+  isStarred: boolean;
 
   @ApiProperty({ example: '2023-10-27T10:00:00.000Z' })
   @Expose()

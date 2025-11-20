@@ -8,6 +8,14 @@ import {
 } from 'class-validator';
 
 export class CreateTermDto {
+  @ApiProperty({
+    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
+    description: 'Module ID this term belongs to',
+  })
+  @IsUUID()
+  @IsNotEmpty()
+  moduleId: string;
+
   @ApiProperty({ example: 'Photosynthesis' })
   @IsString()
   @IsNotEmpty()
@@ -20,21 +28,8 @@ export class CreateTermDto {
   @IsNotEmpty()
   definition: string;
 
-  @ApiProperty({ example: 'not_studied', required: false })
-  @IsString()
-  @IsOptional()
-  status?: 'not_studied' | 'in_progress' | 'completed';
-
   @ApiProperty({ example: true, required: false })
   @IsBoolean()
   @IsOptional()
   isStarred?: boolean;
-
-  @ApiProperty({
-    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'Module ID this term belongs to',
-  })
-  @IsUUID()
-  @IsNotEmpty()
-  moduleId: string;
 }

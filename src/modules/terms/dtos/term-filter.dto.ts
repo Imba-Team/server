@@ -11,8 +11,7 @@ export class TermFilterDto {
   @IsOptional()
   isStarred?: boolean;
 
-  @ApiProperty({ example: 'Photosynthesis', required: false })
-  @IsString()
   @IsOptional()
-  term?: string;
+  @IsString()
+  moduleId?: string;
 }

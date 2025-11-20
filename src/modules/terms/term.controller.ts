@@ -28,8 +28,9 @@ import { IUser } from 'src/common/interfaces/user.interface';
 import { TermService } from './term.service';
 import { CreateTermDto } from './dtos/create-term';
 import { TermResponseDto } from './dtos/term-response.dto';
-import { TermFilterDto } from './dtos/term-filter';
+import { TermFilterDto } from './dtos/term-filter.dto';
 import { UpdateTermDto } from './dtos/update-term';
+import { AuthService } from '../auth/auth.service';
 
 @ApiTags('Terms')
 @ApiBearerAuth()
@@ -37,7 +38,10 @@ import { UpdateTermDto } from './dtos/update-term';
 @Roles(Role.USER, Role.ADMIN)
 @Controller('terms')
 export class TermController {
-  constructor(private readonly termService: TermService) {}
+  constructor(
+    private readonly termService: TermService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Post()
   @HttpCode(201)
@@ -60,74 +64,49 @@ export class TermController {
     @CurrentUser() user: IUser,
     @Body() createTermDto: CreateTermDto,
   ): Promise<ResponseDto<TermResponseDto>> {
-    const newTerm = await this.termService.create(user.id, createTermDto);
-    const data = plainToInstance(TermResponseDto, newTerm, {
-      excludeExtraneousValues: true,
-    });
+    const newTerm = await this.termService.create(createTermDto);
 
     return {
       ok: true,
       message: 'Term created successfully',
-      data,
+      data: newTerm,
     };
   }
 
   @Get()
   @HttpCode(200)
-  @ApiOperation({
-    summary: 'Get all terms with pagination and optional filters',
-  })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
+  @ApiOperation({ summary: 'Get all terms with optional filters' })
   @ApiQuery({
-    name: 'genre',
+    name: 'status',
     required: false,
     type: String,
-    example: 'Fantasy',
+    enum: ['not_studied', 'in_progress', 'completed'],
   })
   @ApiQuery({
-    name: 'author',
+    name: 'isStarred',
     required: false,
-    type: String,
-    example: 'Tolstoy',
+    type: Boolean,
   })
   @ApiQuery({
-    name: 'title',
+    name: 'moduleId',
     required: false,
     type: String,
-    example: 'War and Peace',
-  })
-  @ApiQuery({
-    name: 'userId',
-    required: false,
-    type: String,
-    example: 'a1b2c3d4-e5f6-7890-1234-567890abcdef',
-    description: 'Filter terms by owner user ID',
   })
   @ApiResponse({
     status: 200,
     description: 'List of terms returned successfully',
     type: [TermResponseDto],
   })
-  async findAll(
-    @Query() filter: TermFilterDto & { userId?: string }, // Combine with userId for query
-  ): Promise<
-    ResponseDto<{
-      data: TermResponseDto[];
-      total: number;
-    }>
-  > {
+  async findAll(@Query() filter: TermFilterDto) {
     const { data, total } = await this.termService.findAll(filter);
-
-    const transformedData = plainToInstance(TermResponseDto, data, {
-      excludeExtraneousValues: true,
-    });
 
     return {
       ok: true,
       message: 'Terms retrieved successfully',
       data: {
-        data: transformedData,
+        data: plainToInstance(TermResponseDto, data, {
+          excludeExtraneousValues: true,
+        }),
         total,
       },
     };
