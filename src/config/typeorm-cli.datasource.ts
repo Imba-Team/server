@@ -3,9 +3,6 @@ import { DataSource } from 'typeorm';
 import { Module } from '../modules/module/module.entity';
 import { Term } from '../modules/terms/term.entity';
 import { User } from '../modules/users/user.entity';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
 
 export default new DataSource({
   type: 'postgres',
