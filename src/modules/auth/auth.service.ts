@@ -27,7 +27,7 @@ export class AuthService {
   private readonly context = 'AuthService';
 
   constructor(
-    private readonly config: ConfigService,
+    private readonly configService: ConfigService,
     private readonly jwt: JwtService,
     @Inject(forwardRef(() => MagicLinkService))
     private readonly magicLinkService: MagicLinkService,
@@ -38,14 +38,14 @@ export class AuthService {
   }
 
   private getCookieSettings(): Record<string, CookieOptions> {
-    const isProduction = this.config.get('NODE_ENV') === 'production';
+    const isProduction = this.configService.get('NODE_ENV') === 'production';
     const cookieDomain = isProduction ? process.env.COOKIE_DOMAIN : undefined;
 
     return {
       token: {
         httpOnly: true,
         path: '/',
-        maxAge: this.config.get('COOKIE_EXPIRES_IN') || 604800000, // 7 days
+        maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000, // 7 days
         sameSite: isProduction ? 'strict' : 'lax',
         secure: isProduction,
         domain: cookieDomain,
@@ -53,7 +53,7 @@ export class AuthService {
       isLoggedIn: {
         httpOnly: false,
         path: '/',
-        maxAge: this.config.get('COOKIE_EXPIRES_IN') || 604800000,
+        maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000,
         sameSite: isProduction ? 'strict' : 'lax',
         secure: isProduction,
         domain: cookieDomain,
@@ -74,14 +74,14 @@ export class AuthService {
     };
 
     return this.jwt.sign(payload, {
-      secret: this.config.get('JWT_SECRET'),
-      expiresIn: this.config.get('JWT_EXPIRES_IN'),
+      secret: this.configService.get('JWT_SECRET'),
+      expiresIn: this.configService.get('JWT_EXPIRES_IN'),
     });
   }
 
   verifyToken(token: string): Record<string, string> {
     return this.jwt.verify(token, {
-      secret: this.config.get('JWT_SECRET'),
+      secret: this.configService.get('JWT_SECRET'),
     });
   }
 
