@@ -15,7 +15,14 @@ async function bootstrap() {
   app.use(helmet());
 
   // Enable CORS if needed
-  app.enableCors();
+  app.enableCors({
+  origin: [
+    'http://localhost:3000',
+    'https://quizlet-taupe.vercel.app/',
+    'https://imba-learn.vercel.app/', 
+  ],
+  credentials: true,
+});
 
   // Enable global validation pipe
   app.useGlobalPipes(
