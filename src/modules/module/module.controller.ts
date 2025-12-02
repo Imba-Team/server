@@ -79,12 +79,40 @@ export class ModuleController {
     description: 'List of modules returned successfully',
     type: [ModuleResponseDto],
   })
-  async findAll() {
-    const data = await this.moduleService.findAll();
+  async findAll(@CurrentUser() user: IUser) {
+    
+
+    const data = await this.moduleService.findByUserId(user.id);
 
     return {
       ok: true,
       message: 'Modules retrieved successfully',
+      data: data.map(module => plainToInstance(ModuleResponseDto, module, {
+        excludeExtraneousValues: true,
+      })),
+    };
+  }
+
+  @Get('all')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Get all modules (admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all modules returned successfully',
+    type: [ModuleResponseDto],
+  })
+  @Roles(Role.ADMIN)
+  async findAllModules(): Promise<ResponseDto<ModuleResponseDto[]>> {
+    const modules = await this.moduleService.findAll();
+    const data = modules.map(module =>
+      plainToInstance(ModuleResponseDto, module, {
+        excludeExtraneousValues: true,
+      }),
+    );
+
+    return {
+      ok: true,
+      message: 'All modules retrieved successfully',
       data,
     };
   }

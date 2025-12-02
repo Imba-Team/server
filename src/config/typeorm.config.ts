@@ -9,11 +9,7 @@ export const typeOrmConfigAsync = {
   inject: [ConfigService],
   useFactory: (configService: ConfigService): TypeOrmModuleOptions => ({
     type: 'postgres',
-    host: configService.get('DATABASE_HOST'),
-    port: configService.get<number>('DATABASE_PORT'),
-    username: configService.get('DATABASE_USER'),
-    password: configService.get('DATABASE_PASSWORD'),
-    database: configService.get('DATABASE_NAME'),
+    url: configService.get<string>('DATABASE_URL'),
     entities: [Module, Term, User],
     synchronize: true, // NOTE: Need to disable in production and use migrations
     autoLoadEntities: true,

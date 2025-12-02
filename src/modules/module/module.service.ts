@@ -75,6 +75,11 @@ export class ModuleService {
     return savedModule;
   }
 
+  findByUserId(userId: string): Promise<Module[]> {
+    this.logger.log(`Retrieving modules for user with ID: ${userId}`);
+    return this.moduleRepository.find({ where: { userId } });
+  }
+
   async findAll() {
     const modules = await this.moduleRepository.find();
 
