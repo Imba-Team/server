@@ -31,4 +31,8 @@ export class UserResponseDto {
   @Expose()
   @ApiProperty()
   updatedAt: Date;
+
+  @Expose()
+  @ApiProperty({ nullable: true })
+  profilePicture?: string | null;
 }

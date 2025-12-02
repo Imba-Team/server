@@ -80,16 +80,16 @@ export class ModuleController {
     type: [ModuleResponseDto],
   })
   async findAll(@CurrentUser() user: IUser) {
-    
-
     const data = await this.moduleService.findByUserId(user.id);
 
     return {
       ok: true,
       message: 'Modules retrieved successfully',
-      data: data.map(module => plainToInstance(ModuleResponseDto, module, {
-        excludeExtraneousValues: true,
-      })),
+      data: data.map((module) =>
+        plainToInstance(ModuleResponseDto, module, {
+          excludeExtraneousValues: true,
+        }),
+      ),
     };
   }
 
@@ -104,7 +104,7 @@ export class ModuleController {
   @Roles(Role.ADMIN)
   async findAllModules(): Promise<ResponseDto<ModuleResponseDto[]>> {
     const modules = await this.moduleService.findAll();
-    const data = modules.map(module =>
+    const data = modules.map((module) =>
       plainToInstance(ModuleResponseDto, module, {
         excludeExtraneousValues: true,
       }),
