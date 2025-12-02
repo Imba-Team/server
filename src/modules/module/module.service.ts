@@ -75,13 +75,30 @@ export class ModuleService {
     return savedModule;
   }
 
-  findByUserId(userId: string): Promise<Module[]> {
+  async findByUserId(userId: string): Promise<Module[]> {
     this.logger.log(`Retrieving modules for user with ID: ${userId}`);
-    return this.moduleRepository.find({ where: { userId } });
+
+    const modules = await this.moduleRepository
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.terms', 't')
+      .where('m.userId = :userId', { userId })
+      .getMany();
+
+    return modules.map((module) => {
+      const progress = this.calculateProgress(module.terms);
+
+      return {
+        ...module,
+        progress,
+      };
+    });
   }
 
   async findAll() {
-    const modules = await this.moduleRepository.find();
+    const modules = await this.moduleRepository
+      .createQueryBuilder('m')
+      .loadRelationCountAndMap('m.termsCount', 'm.terms')
+      .getMany();
 
     this.logger.log(`Retrieved ${modules.length} modules from the database.`);
 
@@ -90,26 +107,48 @@ export class ModuleService {
 
   async findById(id: string): Promise<Module> {
     this.logger.log(`Attempting to find module with ID: ${id}`);
-    const module = await this.moduleRepository.findOne({ where: { id } });
+
+    const module = await this.moduleRepository
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.terms', 't') // <-- load terms
+      .where('m.id = :id', { id })
+      .getOne();
 
     if (!module) {
       this.logger.warn(`Module with ID ${id} not found.`);
       throw new NotFoundException(`Module with ID ${id} not found.`);
     }
+
+    const progress = this.calculateProgress(module.terms);
+
     this.logger.log(`Found module with ID: ${id}`);
-    return module;
+    return {
+      ...module,
+      progress,
+    };
   }
 
   async findBySlug(slug: string): Promise<Module> {
     this.logger.log(`Attempting to find module with slug: ${slug}`);
-    const module = await this.moduleRepository.findOne({ where: { slug } });
+
+    const module = await this.moduleRepository
+      .createQueryBuilder('m')
+      .leftJoinAndSelect('m.terms', 't') // <-- load terms
+      .where('m.slug = :slug', { slug })
+      .getOne();
 
     if (!module) {
       this.logger.warn(`Module with slug ${slug} not found.`);
       throw new NotFoundException(`Module with slug ${slug} not found.`);
     }
+
+    const progress = this.calculateProgress(module.terms);
+
     this.logger.log(`Found module with slug: ${slug}`);
-    return module;
+    return {
+      ...module,
+      progress,
+    };
   }
 
   async update(id: string, updateModuleDto: UpdateModuleDto): Promise<Module> {
@@ -136,5 +175,31 @@ export class ModuleService {
     const result = await this.moduleRepository.remove(moduleToDelete);
     this.logger.log(`Successfully deleted module with ID: ${id}`);
     return result;
+  }
+
+  private calculateProgress(terms: any[]) {
+    const total = terms.length;
+
+    const counts = {
+      not_started: 0,
+      in_progress: 0,
+      completed: 0,
+    };
+
+    for (const term of terms) {
+      counts[term.status]++;
+    }
+
+    return total
+      ? {
+          not_started: counts.not_started / total,
+          in_progress: counts.in_progress / total,
+          completed: counts.completed / total,
+        }
+      : {
+          not_started: 0,
+          in_progress: 0,
+          completed: 0,
+        };
   }
 }

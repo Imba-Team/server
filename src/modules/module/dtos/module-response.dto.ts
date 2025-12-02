@@ -28,4 +28,18 @@ export class ModuleResponseDto {
   })
   @Expose()
   userId: string;
+
+  @ApiProperty({ example: 0 })
+  @Expose()
+  termsCount?: number;
+
+  @ApiProperty({
+    example: { not_started: 0.3, in_progress: 0.4, completed: 0.3 },
+  })
+  @Expose()
+  progress?: {
+    not_started: number;
+    in_progress: number;
+    completed: number;
+  };
 }
