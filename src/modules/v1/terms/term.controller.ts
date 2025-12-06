@@ -30,7 +30,7 @@ import { CreateTermDto } from './dtos/create-term';
 import { TermResponseDto } from './dtos/term-response.dto';
 import { TermFilterDto } from './dtos/term-filter.dto';
 import { UpdateTermDto } from './dtos/update-term';
-import { AuthService } from '../auth/auth.service';
+import { AuthService } from '../../auth/auth.service';
 
 @ApiTags('Terms')
 @ApiBearerAuth()

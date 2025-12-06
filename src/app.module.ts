@@ -6,14 +6,15 @@ import { UsersModule } from './modules/users/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { ModuleModule } from './modules/module/module.module';
-import { TermModule } from './modules/terms/term.module';
+import { ModuleModule } from './modules/v1/module/module.module';
+import { TermModule } from './modules/v1/terms/term.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { ModuleV2Module } from './modules/v2/module/module.module';
+import { TermProgressV2Module } from './modules/v2/term/term-progress.module';
 
 @Module({
   imports: [
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'), // folder on disk
       serveRoot: '/uploads', // public URL path root
@@ -31,6 +32,8 @@ import { join } from 'path';
     AuthModule,
     ModuleModule,
     TermModule,
+    ModuleV2Module,
+    TermProgressV2Module,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],

@@ -9,7 +9,9 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
-import { Module } from '../module/module.entity';
+import { Module } from '../v1/module/module.entity';
+import { UserModule } from '../v2/module/user-module.entity';
+import { UserTermProgress } from 'src/modules/v2/term/user-term-progress.entity';
 
 @Entity('user')
 export class User {
@@ -33,6 +35,18 @@ export class User {
   // Add the modules relationship here
   @OneToMany(() => Module, (module) => module.user)
   modules: Module[];
+
+  @OneToMany(() => UserModule, (userModule: UserModule) => userModule.user, {
+    cascade: false,
+  })
+  userModules: UserModule[];
+
+  @OneToMany(
+    () => UserTermProgress,
+    (progress: UserTermProgress) => progress.user,
+    { cascade: false },
+  )
+  termProgress: UserTermProgress[];
 
   @Column({ default: 'user' })
   role: Role;

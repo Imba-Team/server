@@ -4,9 +4,11 @@
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Module } from 'src/modules/module/module.entity';
-import { Term } from 'src/modules/terms/term.entity';
+import { Module } from 'src/modules/v1/module/module.entity';
+import { Term } from 'src/modules/v1/terms/term.entity';
 import { User } from 'src/modules/users/user.entity';
+import { UserModule } from 'src/modules/v2/module/user-module.entity';
+import { UserTermProgress } from 'src/modules/v2/term/user-term-progress.entity';
 import { DataSource, DataSourceOptions } from 'typeorm';
 
 TypeOrmModule.forRootAsync({
@@ -17,7 +19,7 @@ TypeOrmModule.forRootAsync({
 
     const baseOptions: Partial<DataSourceOptions> = {
       type: 'mysql',
-      entities: [Module, Term, User],
+      entities: [Module, Term, User, UserModule, UserTermProgress],
       synchronize: true,
     };
 

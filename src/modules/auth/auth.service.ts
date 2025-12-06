@@ -38,25 +38,25 @@ export class AuthService {
   }
 
   private getCookieSettings(): Record<string, CookieOptions> {
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
-    const cookieDomain = isProduction ? process.env.COOKIE_DOMAIN : undefined;
+    // const isProduction = this.configService.get('NODE_ENV') === 'production';
+    // const cookieDomain = isProduction ? process.env.COOKIE_DOMAIN : undefined;
 
     return {
-  token: {
-    httpOnly: true,
-    path: '/',
-    maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000,
-    sameSite: 'none',
-    secure: true,
-  },
-  isLoggedIn: {
-    httpOnly: false,
-    path: '/',
-    maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000,
-    sameSite: 'none',
-    secure: true,
-  },
-};
+      token: {
+        httpOnly: true,
+        path: '/',
+        maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000,
+        sameSite: 'none',
+        secure: true,
+      },
+      isLoggedIn: {
+        httpOnly: false,
+        path: '/',
+        maxAge: this.configService.get('COOKIE_EXPIRES_IN') || 604800000,
+        sameSite: 'none',
+        secure: true,
+      },
+    };
   }
 
   generateResponseTokens(response: Response, token: string) {

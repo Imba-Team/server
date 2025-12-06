@@ -9,8 +9,9 @@ import {
   OneToMany,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
-import { User } from '../users/user.entity';
+import { User } from '../../users/user.entity';
 import { Term } from '../terms/term.entity';
+import { UserModule } from 'src/modules/v2/module/user-module.entity';
 
 @Entity('module')
 export class Module {
@@ -46,6 +47,11 @@ export class Module {
 
   @OneToMany(() => Term, (term) => term.module, { onDelete: 'CASCADE' })
   terms: Term[];
+
+  @OneToMany(() => UserModule, (userModule: UserModule) => userModule.module, {
+    cascade: false,
+  })
+  userModules: UserModule[];
 
   @ApiProperty({ example: 0 })
   termsCount: number;

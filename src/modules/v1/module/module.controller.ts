@@ -101,7 +101,7 @@ export class ModuleController {
     description: 'List of all modules returned successfully',
     type: [ModuleResponseDto],
   })
-  @Roles(Role.ADMIN)
+  // @Roles(Role.ADMIN)
   async findAllModules(): Promise<ResponseDto<ModuleResponseDto[]>> {
     const modules = await this.moduleService.findAll();
     const data = modules.map((module) =>
