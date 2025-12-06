@@ -31,4 +31,9 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role;
+
+  @ApiPropertyOptional({ example: '/uploads/profile-pictures/abc.jpg' })
+  @IsOptional()
+  @IsString()
+  profilePicture?: string;
 }

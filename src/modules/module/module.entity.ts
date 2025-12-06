@@ -47,6 +47,18 @@ export class Module {
   @OneToMany(() => Term, (term) => term.module, { onDelete: 'CASCADE' })
   terms: Term[];
 
+  @ApiProperty({ example: 0 })
+  termsCount: number;
+
+  @ApiProperty({
+    example: { not_started: 0.3, in_progress: 0.4, completed: 0.3 },
+  })
+  progress: {
+    not_started: number;
+    in_progress: number;
+    completed: number;
+  };
+
   @CreateDateColumn()
   createdAt: Date;
 

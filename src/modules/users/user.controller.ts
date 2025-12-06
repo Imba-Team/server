@@ -6,12 +6,16 @@ import {
   HttpCode,
   UseGuards,
   Delete,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiTags,
   ApiOperation,
   ApiResponse,
+  ApiBody,
 } from '@nestjs/swagger';
 import { UsersService } from './user.service';
 import { UpdateUserDto } from './dtos/update-user.dto';
@@ -25,6 +29,57 @@ import { plainToInstance } from 'class-transformer';
 import { UserResponseDto } from './dtos/user-response.dto';
 import { ChangePasswordDto } from './dtos/change-password.dto';
 import { ResponseDto } from 'src/common/interfaces/response.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname, join } from 'path';
+import * as fs from 'fs';
+import { ApiConsumes } from '@nestjs/swagger';
+import type { Request } from 'express';
+import type { MulterOptions } from 'multer';
+
+type MulterFile = { originalname: string; filename?: string };
+
+const multerOptions: MulterOptions = {
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+  storage: diskStorage({
+    destination: (
+      req: Request & { user?: { id?: string } },
+      file: MulterFile,
+      cb: (err: Error | null, destination: string) => void,
+    ) => {
+      const uploadPath = join(process.cwd(), 'uploads', 'profile-pictures');
+      if (!fs.existsSync(uploadPath)) {
+        fs.mkdirSync(uploadPath, { recursive: true });
+      }
+      cb(null, uploadPath);
+    },
+    filename: (
+      req: Request & { user?: { id?: string } },
+      file: MulterFile,
+      cb: (err: Error | null, filename: string) => void,
+    ) => {
+      const userId = req.user?.id ?? Date.now().toString();
+      const fileExt = extname(file.originalname || '');
+      const filename = `${userId}-${Date.now()}${fileExt}`;
+      cb(null, filename);
+    },
+  }),
+
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  fileFilter: (
+    req: Request,
+    file: MulterFile,
+    cb: (err: Error | null, acceptFile: boolean) => void,
+  ) => {
+    const allowed = /\.jpeg$|\.jpg$|\.png$|\.gif$/i;
+    const ext = extname(file.originalname || '').toLowerCase();
+    if (allowed.test(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  },
+};
 
 @ApiTags('Users')
 @ApiBearerAuth()
@@ -74,6 +129,47 @@ export class UsersController {
     return {
       ok: true,
       message: 'User updated successfully',
+      data: updatedUser
+        ? plainToInstance(UserResponseDto, updatedUser, {
+            excludeExtraneousValues: true,
+          })
+        : null,
+    };
+  }
+
+  @Patch('me/profile-picture')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor('file', multerOptions as any))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiOperation({ summary: "Upload / update user's profile picture" })
+  async uploadProfilePicture(
+    @CurrentUser() user: IUser,
+    @UploadedFile() file: MulterFile,
+  ): Promise<ResponseDto<UserResponseDto | null>> {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const relativePath = `/uploads/profile-pictures/${file.filename}`;
+    const updatedUser = await this.usersService.update(user.id, {
+      profilePicture: relativePath,
+    } as unknown as UpdateUserDto);
+
+    return {
+      ok: true,
+      message: 'Profile picture updated successfully',
       data: updatedUser
         ? plainToInstance(UserResponseDto, updatedUser, {
             excludeExtraneousValues: true,
