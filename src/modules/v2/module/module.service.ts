@@ -43,18 +43,16 @@ export class ModuleV2Service {
     await this.usersService.findById(userId);
 
     const slug = slugify(dto.title);
-    const duplicateSlug = await this.moduleRepository.findOne({
-      where: { slug },
-    });
-    if (duplicateSlug) {
-      throw new ConflictException('Module slug already exists');
-    }
 
-    const duplicateTitle = await this.moduleRepository.findOne({
-      where: { title: dto.title },
+    // Combine duplicate checks into single query
+    const duplicate = await this.moduleRepository.findOne({
+      where: [{ slug }, { title: dto.title }],
     });
 
-    if (duplicateTitle) {
+    if (duplicate) {
+      if (duplicate.slug === slug) {
+        throw new ConflictException('Module slug already exists');
+      }
       throw new ConflictException('Module title already exists');
     }
 
@@ -68,7 +66,7 @@ export class ModuleV2Service {
 
     await this.ensureUserModule(userId, saved.id, true);
 
-    return this.buildModuleForUser(saved.id, userId, true);
+    return this.buildModuleForUser(saved.id, userId, true, true);
   }
 
   async update(userId: string, moduleId: string, dto: UpdateModuleV2Dto) {
@@ -90,29 +88,29 @@ export class ModuleV2Service {
     return this.buildModuleForUser(moduleId, userId, true);
   }
 
-  async findMyModules(userId: string) {
-    const modules = await this.moduleRepository.find({ where: { userId } });
-    return Promise.all(
-      modules.map((mod) => this.buildModuleForUser(mod.id, userId, false)),
-    );
+  // Get modules owned by user with progress info
+  async findCreatedModules(userId: string) {
+    const modules = await this.moduleRepository.find({
+      where: { userId },
+      relations: ['terms'],
+    });
+    return this.buildModulesForUserBatch(modules, userId, false);
   }
 
   async findCollection(userId: string) {
     const links = await this.userModuleRepository.find({
       where: { userId },
-      relations: ['module'],
+      relations: ['module', 'module.terms'],
     });
 
-    return Promise.all(
-      links.map((link) =>
-        this.buildModuleForUser(link.moduleId, userId, false),
-      ),
-    );
+    const modules = links.map((link) => link.module);
+    return this.buildModulesForUserBatch(modules, userId, false);
   }
 
   async searchPublic(userId: string, query: SearchModulesDto) {
     const qb = this.moduleRepository
       .createQueryBuilder('m')
+      .leftJoinAndSelect('m.terms', 't')
       .where('m.isPrivate = :isPrivate', { isPrivate: false });
 
     if (query.q) {
@@ -126,9 +124,7 @@ export class ModuleV2Service {
 
     const modules = await qb.getMany();
 
-    return Promise.all(
-      modules.map((mod) => this.buildModuleForUser(mod.id, userId, false)),
-    );
+    return this.buildModulesForUserBatch(modules, userId, false);
   }
 
   async addToCollection(userId: string, moduleId: string) {
@@ -141,51 +137,54 @@ export class ModuleV2Service {
   }
 
   async getById(userId: string, moduleId: string) {
-    const module = await this.findModuleOrFail(moduleId);
+    const module = await this.moduleRepository.findOne({
+      where: { id: moduleId },
+      relations: ['terms'],
+    });
+
+    if (!module) {
+      throw new NotFoundException('Module not found');
+    }
+
     this.assertAccessible(module, userId);
 
     const isOwner = module.userId === userId;
-    const isCollected = await this.userModuleRepository.exist({
-      where: { userId, moduleId },
-    });
+    const isCollected =
+      isOwner ||
+      (await this.userModuleRepository.exist({
+        where: { userId, moduleId },
+      }));
 
-    if (isOwner || isCollected) {
+    if (isCollected) {
       await this.ensureUserModule(userId, moduleId, isOwner);
     }
 
-    return this.buildModuleForUser(
-      moduleId,
-      userId,
-      true,
-      isOwner || isCollected,
-    );
+    return this.buildModuleForUser(module, userId, true, isCollected);
   }
 
   private async buildModuleForUser(
-    moduleId: string,
+    moduleOrId: Module | string,
     userId: string,
     includeTerms = false,
     alreadyCollected?: boolean,
   ): Promise<ModuleResponseV2Dto> {
-    const module = await this.findModuleOrFail(moduleId);
+    const module =
+      typeof moduleOrId === 'string'
+        ? await this.moduleRepository.findOne({
+            where: { id: moduleOrId },
+            relations: ['terms'],
+          })
+        : moduleOrId;
 
-    const owner = await this.userRepository.findOne({
-      where: { id: module.userId },
-    });
+    if (!module) {
+      throw new NotFoundException('Module not found');
+    }
 
-    const isCollected =
-      alreadyCollected ||
-      (await this.userModuleRepository.exist({
-        where: { userId, moduleId },
-      })) ||
-      module.userId === userId;
+    const isOwner = module.userId === userId;
+    const isCollected = alreadyCollected ?? isOwner;
+    const terms = module.terms || [];
 
-    const shouldLoadTerms = includeTerms || isCollected;
-    const terms = shouldLoadTerms
-      ? await this.termRepository.find({ where: { moduleId: module.id } })
-      : [];
-
-    if (isCollected) {
+    if (isCollected && terms.length) {
       await this.ensureProgressRecords(
         userId,
         module.id,
@@ -193,12 +192,13 @@ export class ModuleV2Service {
       );
     }
 
-    const progress = await this.calculateProgressForUser(
-      userId,
-      module.id,
-      terms,
-      isCollected,
-    );
+    const [progress, owner] = await Promise.all([
+      this.calculateProgressForUser(userId, module.id, terms, isCollected),
+      this.userRepository.findOne({
+        where: { id: module.userId },
+        select: ['id', 'name', 'profilePicture'],
+      }),
+    ]);
 
     const termsWithProgress = includeTerms
       ? await this.attachTermProgress(userId, module.id, terms, isCollected)
@@ -209,10 +209,10 @@ export class ModuleV2Service {
       {
         ...module,
         ownerName: owner?.name,
+        ownerImg: owner?.profilePicture,
+        isOwner,
         isCollected,
-        termsCount: terms.length
-          ? terms.length
-          : (module.terms?.length ?? undefined),
+        termsCount: terms.length || undefined,
         progress,
         terms: termsWithProgress,
       },
@@ -225,17 +225,27 @@ export class ModuleV2Service {
     moduleId: string,
     terms: Term[],
     isCollected: boolean,
-  ) {
-    if (!terms.length) return [] as TermWithProgressDto[];
+  ): Promise<TermWithProgressDto[]> {
+    if (!terms.length) return [];
+
+    if (!isCollected) {
+      return terms.map((term) =>
+        plainToInstance(
+          TermWithProgressDto,
+          {
+            ...term,
+            status: 'not_started',
+            isStarred: false,
+          },
+          { excludeExtraneousValues: true },
+        ),
+      );
+    }
 
     const termIds = terms.map((t) => t.id);
-    let progressRows: UserTermProgress[] = [];
-
-    if (isCollected) {
-      progressRows = await this.userTermProgressRepository.find({
-        where: { userId, termId: In(termIds) },
-      });
-    }
+    const progressRows = await this.userTermProgressRepository.find({
+      where: { userId, termId: In(termIds) },
+    });
 
     const progressMap = new Map(progressRows.map((p) => [p.termId, p]));
 
@@ -258,13 +268,15 @@ export class ModuleV2Service {
     moduleId: string,
     terms: Term[],
     isCollected: boolean,
-  ) {
+  ): Promise<{ not_started: number; in_progress: number; completed: number }> {
+    const defaultProgress = {
+      not_started: terms.length ? 1 : 0,
+      in_progress: 0,
+      completed: 0,
+    };
+
     if (!isCollected || !terms.length) {
-      return {
-        not_started: terms.length ? 1 : 0,
-        in_progress: 0,
-        completed: 0,
-      };
+      return defaultProgress;
     }
 
     const termIds = terms.map((t) => t.id);
@@ -273,24 +285,18 @@ export class ModuleV2Service {
     });
 
     if (!progressRows.length) {
-      return {
-        not_started: terms.length ? 1 : 0,
-        in_progress: 0,
-        completed: 0,
-      };
+      return defaultProgress;
     }
 
-    const counts = {
-      not_started: 0,
-      in_progress: 0,
-      completed: 0,
-    };
+    const counts = progressRows.reduce(
+      (acc, row) => {
+        acc[row.status]++;
+        return acc;
+      },
+      { not_started: 0, in_progress: 0, completed: 0 },
+    );
 
-    for (const row of progressRows) {
-      counts[row.status]++;
-    }
-
-    const total = terms.length || 1;
+    const total = terms.length;
 
     return {
       not_started: counts.not_started / total,
@@ -334,8 +340,8 @@ export class ModuleV2Service {
     userId: string,
     moduleId: string,
     seedProgressFromTerm = false,
-  ) {
-    const exists = await this.userModuleRepository.findOne({
+  ): Promise<void> {
+    const exists = await this.userModuleRepository.exist({
       where: { userId, moduleId },
     });
 
@@ -361,7 +367,7 @@ export class ModuleV2Service {
     }
   }
 
-  private async findModuleOrFail(moduleId: string) {
+  private async findModuleOrFail(moduleId: string): Promise<Module> {
     const module = await this.moduleRepository.findOne({
       where: { id: moduleId },
     });
@@ -369,5 +375,74 @@ export class ModuleV2Service {
       throw new NotFoundException('Module not found');
     }
     return module;
+  }
+
+  private async buildModulesForUserBatch(
+    modules: Module[],
+    userId: string,
+    includeTerms: boolean,
+  ): Promise<ModuleResponseV2Dto[]> {
+    if (!modules.length) return [];
+
+    const moduleIds = modules.map((m) => m.id);
+    const ownerIds = [...new Set(modules.map((m) => m.userId))];
+
+    // Batch load all owners and user modules
+    const [owners, userModules] = await Promise.all([
+      this.userRepository.find({
+        where: { id: In(ownerIds) },
+        select: ['id', 'name', 'profilePicture'],
+      }),
+      this.userModuleRepository.find({
+        where: { userId, moduleId: In(moduleIds) },
+      }),
+    ]);
+
+    const ownerMap = new Map(owners.map((o) => [o.id, o]));
+    const collectedModuleIds = new Set(userModules.map((um) => um.moduleId));
+
+    // Build all modules
+    return Promise.all(
+      modules.map(async (module) => {
+        const isOwner = module.userId === userId;
+        const isCollected = isOwner || collectedModuleIds.has(module.id);
+        const terms = module.terms || [];
+        const owner = ownerMap.get(module.userId);
+
+        if (isCollected && terms.length) {
+          await this.ensureProgressRecords(
+            userId,
+            module.id,
+            module.userId === userId,
+          );
+        }
+
+        const progress = await this.calculateProgressForUser(
+          userId,
+          module.id,
+          terms,
+          isCollected,
+        );
+
+        const termsWithProgress = includeTerms
+          ? await this.attachTermProgress(userId, module.id, terms, isCollected)
+          : undefined;
+
+        return plainToInstance(
+          ModuleResponseV2Dto,
+          {
+            ...module,
+            ownerName: owner?.name,
+            ownerImg: owner?.profilePicture,
+            isOwner,
+            isCollected,
+            termsCount: terms.length || undefined,
+            progress,
+            terms: termsWithProgress,
+          },
+          { excludeExtraneousValues: true },
+        );
+      }),
+    );
   }
 }

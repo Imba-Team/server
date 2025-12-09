@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   Patch,
+  Post,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -45,6 +46,26 @@ export class TermProgressV2Controller {
       excludeExtraneousValues: true,
     });
     return { ok: true, message: 'Progress updated', data };
+  }
+
+  @Post(':id/update-status')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Update the status of a term by ID' })
+  @ApiBody({ schema: { properties: { success: { type: 'boolean' } } } })
+  async updateStatus(
+    @CurrentUser() user: IUser,
+    @Param('id') id: string,
+    @Body('success') success: boolean,
+  ): Promise<ResponseDto<TermWithProgressDto>> {
+    const term = await this.termProgressService.updateStatus(
+      user.id,
+      id,
+      success,
+    );
+    const data = plainToInstance(TermWithProgressDto, term, {
+      excludeExtraneousValues: true,
+    });
+    return { ok: true, message: 'Term status updated successfully', data };
   }
 
   @Get(':id/progress')

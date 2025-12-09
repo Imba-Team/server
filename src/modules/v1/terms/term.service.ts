@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -22,7 +23,7 @@ export class TermService {
     private readonly moduleRepository: Repository<Module>,
   ) {}
 
-  async create(createTermDto: CreateTermDto): Promise<Term> {
+  async create(userId: string, createTermDto: CreateTermDto): Promise<Term> {
     this.logger.log(
       `Attempting to create a new term: ${createTermDto.term} for module ${createTermDto.moduleId}`,
     );
@@ -41,7 +42,17 @@ export class TermService {
       );
     }
 
-    // 2. Check for existing term by term and moduleId
+    // 2. Verify ownership: Only module owner can add terms
+    if (moduleExists.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to add term to module ${createTermDto.moduleId} owned by ${moduleExists.userId}`,
+      );
+      throw new ForbiddenException(
+        'You can only add terms to your own modules',
+      );
+    }
+
+    // 3. Check for existing term by term and moduleId
     const existingTerm = await this.termRepository.findOne({
       where: [
         {
@@ -102,13 +113,30 @@ export class TermService {
     return term;
   }
 
-  async update(id: string, updateTermDto: UpdateTermDto): Promise<Term> {
+  async update(
+    userId: string,
+    id: string,
+    updateTermDto: UpdateTermDto,
+  ): Promise<Term> {
     this.logger.log(`Attempting to update term with ID: ${id}`);
-    const existingTerm = await this.termRepository.findOne({ where: { id } });
+    const existingTerm = await this.termRepository.findOne({
+      where: { id },
+      relations: ['module'],
+    });
 
     if (!existingTerm) {
       this.logger.warn(`Term with ID ${id} not found for update.`);
       throw new NotFoundException(`Term with ID ${id} not found.`);
+    }
+
+    // Verify ownership through module
+    if (existingTerm.module.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to update term ${id} in module owned by ${existingTerm.module.userId}`,
+      );
+      throw new ForbiddenException(
+        'You can only modify terms in your own modules',
+      );
     }
 
     await this.termRepository.update(id, updateTermDto);
@@ -117,15 +145,32 @@ export class TermService {
     return updatedTerm;
   }
 
-  async updateStatus(id: string, success: boolean): Promise<Term> {
+  async updateStatus(
+    userId: string,
+    id: string,
+    success: boolean,
+  ): Promise<Term> {
     this.logger.log(
       `Attempting to ${success ? 'upgrade' : 'decrease'} status of term with ID: ${id}`,
     );
-    const existingTerm = await this.termRepository.findOne({ where: { id } });
+    const existingTerm = await this.termRepository.findOne({
+      where: { id },
+      relations: ['module'],
+    });
 
     if (!existingTerm) {
       this.logger.warn(`Term with ID ${id} not found for status update.`);
       throw new NotFoundException(`Term with ID ${id} not found.`);
+    }
+
+    // Verify ownership through module
+    if (existingTerm.module.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to update status of term ${id} in module owned by ${existingTerm.module.userId}`,
+      );
+      throw new ForbiddenException(
+        'You can only modify terms in your own modules',
+      );
     }
 
     const currentStatus = existingTerm.status;
@@ -164,9 +209,27 @@ export class TermService {
     return existingTerm;
   }
 
-  async delete(id: string): Promise<Term> {
+  async delete(userId: string, id: string): Promise<Term> {
     this.logger.log(`Attempting to delete term with ID: ${id}`);
-    const termToDelete = await this.findById(id); // This will throw NotFoundException if not found
+    const termToDelete = await this.termRepository.findOne({
+      where: { id },
+      relations: ['module'],
+    });
+
+    if (!termToDelete) {
+      this.logger.warn(`Term with ID ${id} not found.`);
+      throw new NotFoundException(`Term with ID ${id} not found.`);
+    }
+
+    // Verify ownership through module
+    if (termToDelete.module.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to delete term ${id} in module owned by ${termToDelete.module.userId}`,
+      );
+      throw new ForbiddenException(
+        'You can only delete terms from your own modules',
+      );
+    }
 
     const result = await this.termRepository.remove(termToDelete);
     this.logger.log(`Successfully deleted term with ID: ${id}`);

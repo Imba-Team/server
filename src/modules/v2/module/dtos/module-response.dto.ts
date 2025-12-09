@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-return */
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
 import { TermWithProgressDto } from '../../term/dtos/term-with-progress.dto';
@@ -31,6 +30,14 @@ export class ModuleResponseV2Dto {
   @ApiProperty({ required: false })
   @Expose()
   ownerName?: string;
+
+  @ApiProperty({ required: false })
+  @Expose()
+  ownerImg?: string;
+
+  @ApiProperty({ example: false })
+  @Expose()
+  isOwner: boolean;
 
   @ApiProperty({ example: true, required: false })
   @Expose()

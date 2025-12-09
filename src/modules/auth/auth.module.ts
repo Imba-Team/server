@@ -11,7 +11,7 @@ import { MagicLinkService } from './magic-link.service';
 import { MagicLink } from './magic-link.entity';
 import { MailService } from 'src/common/mail/mail.service';
 import { MailModule } from 'src/common/mail/mail.module';
-// import { MailerService } from '@nestjs-modules/mailer';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -19,9 +19,15 @@ import { MailModule } from 'src/common/mail/mail.module';
     TypeOrmModule.forFeature([MagicLink]),
     PassportModule,
     MailModule,
-    JwtModule.register({
-      secret: 'JWT_SECRET_KEY', // Use .env in production
-      signOptions: { expiresIn: '1h' },
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get('JWT_EXPIRES_IN', '7d'),
+        },
+      }),
     }),
   ],
   controllers: [AuthController],

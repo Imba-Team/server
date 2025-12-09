@@ -87,11 +87,13 @@ export class ModuleV2Controller {
 
   @Get('me')
   @HttpCode(200)
-  @ApiOperation({ summary: 'List my modules with progress' })
+  @ApiOperation({
+    summary: 'List the modules that I created with the progress info',
+  })
   async myModules(
     @CurrentUser() user: IUser,
   ): Promise<ResponseDto<ModuleResponseV2Dto[]>> {
-    const modules = await this.moduleService.findMyModules(user.id);
+    const modules = await this.moduleService.findCreatedModules(user.id);
     const data = modules.map((m) =>
       plainToInstance(ModuleResponseV2Dto, m, {
         excludeExtraneousValues: true,

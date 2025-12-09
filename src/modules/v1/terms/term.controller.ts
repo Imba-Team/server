@@ -64,7 +64,7 @@ export class TermController {
     @CurrentUser() user: IUser,
     @Body() createTermDto: CreateTermDto,
   ): Promise<ResponseDto<TermResponseDto>> {
-    const newTerm = await this.termService.create(createTermDto);
+    const newTerm = await this.termService.create(user.id, createTermDto);
 
     return {
       ok: true,
@@ -151,10 +151,15 @@ export class TermController {
     description: 'Bad Request (e.g., trying to change moduleId)',
   })
   async update(
+    @CurrentUser() user: IUser,
     @Param('id') id: string,
     @Body() updateTermDto: UpdateTermDto,
   ): Promise<ResponseDto<TermResponseDto | null>> {
-    const updatedTerm = await this.termService.update(id, updateTermDto);
+    const updatedTerm = await this.termService.update(
+      user.id,
+      id,
+      updateTermDto,
+    );
     const data = updatedTerm
       ? plainToInstance(TermResponseDto, updatedTerm, {
           excludeExtraneousValues: true,
@@ -179,10 +184,15 @@ export class TermController {
   })
   @ApiResponse({ status: 404, description: 'Term not found' })
   async updateStatus(
+    @CurrentUser() user: IUser,
     @Param('id') id: string,
     @Body('success') success: boolean,
   ): Promise<ResponseDto<TermResponseDto | null>> {
-    const updatedTerm = await this.termService.updateStatus(id, success);
+    const updatedTerm = await this.termService.updateStatus(
+      user.id,
+      id,
+      success,
+    );
     const data = updatedTerm
       ? plainToInstance(TermResponseDto, updatedTerm, {
           excludeExtraneousValues: true,
@@ -206,9 +216,10 @@ export class TermController {
   })
   @ApiResponse({ status: 404, description: 'Term not found' })
   async delete(
+    @CurrentUser() user: IUser,
     @Param('id') id: string,
   ): Promise<ResponseDto<TermResponseDto | null>> {
-    const deletedTerm = await this.termService.delete(id);
+    const deletedTerm = await this.termService.delete(user.id, id);
     const data = deletedTerm
       ? plainToInstance(TermResponseDto, deletedTerm, {
           excludeExtraneousValues: true,

@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -151,7 +152,11 @@ export class ModuleService {
     };
   }
 
-  async update(id: string, updateModuleDto: UpdateModuleDto): Promise<Module> {
+  async update(
+    userId: string,
+    id: string,
+    updateModuleDto: UpdateModuleDto,
+  ): Promise<Module> {
     this.logger.log(`Attempting to update module with ID: ${id}`);
     const existingModule = await this.moduleRepository.findOne({
       where: { id },
@@ -162,15 +167,31 @@ export class ModuleService {
       throw new NotFoundException(`Module with ID ${id} not found.`);
     }
 
+    // Verify ownership
+    if (existingModule.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to update module ${id} owned by ${existingModule.userId}`,
+      );
+      throw new ForbiddenException('You can only modify your own modules');
+    }
+
     await this.moduleRepository.update(id, updateModuleDto);
     const updatedModule = await this.findById(id); // Fetch the updated module to return
     this.logger.log(`Successfully updated module with ID: ${id}`);
     return updatedModule;
   }
 
-  async delete(id: string): Promise<Module> {
+  async delete(userId: string, id: string): Promise<Module> {
     this.logger.log(`Attempting to delete module with ID: ${id}`);
     const moduleToDelete = await this.findById(id); // This will throw NotFoundException if not found
+
+    // Verify ownership
+    if (moduleToDelete.userId !== userId) {
+      this.logger.warn(
+        `User ${userId} attempted to delete module ${id} owned by ${moduleToDelete.userId}`,
+      );
+      throw new ForbiddenException('You can only delete your own modules');
+    }
 
     const result = await this.moduleRepository.remove(moduleToDelete);
     this.logger.log(`Successfully deleted module with ID: ${id}`);

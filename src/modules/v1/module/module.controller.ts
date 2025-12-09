@@ -181,10 +181,15 @@ export class ModuleController {
   })
   @ApiResponse({ status: 409, description: 'Conflict: ISBN already exists' })
   async update(
+    @CurrentUser() user: IUser,
     @Param('id') id: string,
     @Body() updateModuleDto: UpdateModuleDto,
   ): Promise<ResponseDto<ModuleResponseDto | null>> {
-    const updatedModule = await this.moduleService.update(id, updateModuleDto);
+    const updatedModule = await this.moduleService.update(
+      user.id,
+      id,
+      updateModuleDto,
+    );
     const data = updatedModule
       ? plainToInstance(ModuleResponseDto, updatedModule, {
           excludeExtraneousValues: true,
@@ -208,9 +213,10 @@ export class ModuleController {
   })
   @ApiResponse({ status: 404, description: 'Module not found' })
   async delete(
+    @CurrentUser() user: IUser,
     @Param('id') id: string,
   ): Promise<ResponseDto<ModuleResponseDto | null>> {
-    const deletedModule = await this.moduleService.delete(id);
+    const deletedModule = await this.moduleService.delete(user.id, id);
     const data = deletedModule
       ? plainToInstance(ModuleResponseDto, deletedModule, {
           excludeExtraneousValues: true,
