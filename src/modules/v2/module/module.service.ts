@@ -136,6 +136,22 @@ export class ModuleV2Service {
     return this.buildModuleForUser(moduleId, userId, true);
   }
 
+  async removeFromCollection(userId: string, moduleId: string) {
+    const module = await this.findModuleOrFail(moduleId);
+    this.assertAccessible(module, userId);
+
+    const isOwner = module.userId === userId;
+    if (isOwner) {
+      throw new ForbiddenException(
+        'Cannot remove your own module from collection',
+      );
+    }
+
+    await this.userModuleRepository.delete({ userId, moduleId });
+
+    return this.buildModuleForUser(moduleId, userId, true, false);
+  }
+
   async getById(userId: string, moduleId: string) {
     const module = await this.moduleRepository.findOne({
       where: { id: moduleId },

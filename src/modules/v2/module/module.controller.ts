@@ -148,6 +148,20 @@ export class ModuleV2Controller {
     return { ok: true, message: 'Module added to collection', data };
   }
 
+  @Post(':id/uncollect')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Remove a module from my collection' })
+  async uncollect(
+    @CurrentUser() user: IUser,
+    @Param('id') id: string,
+  ): Promise<ResponseDto<ModuleResponseV2Dto>> {
+    const module = await this.moduleService.removeFromCollection(user.id, id);
+    const data = plainToInstance(ModuleResponseV2Dto, module, {
+      excludeExtraneousValues: true,
+    });
+    return { ok: true, message: 'Module removed from collection', data };
+  }
+
   @Get(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Get module details with personal progress' })
