@@ -18,10 +18,11 @@ async function bootstrap() {
 
   // Enable CORS if needed
   app.enableCors({
+    // Explicit origins without trailing slashes to match browser Origin header
     origin: [
       'http://localhost:3000',
-      'https://quizlet-taupe.vercel.app/',
-      'https://imba-learn.vercel.app/',
+      'https://quizlet-taupe.vercel.app',
+      'https://imba-learn.vercel.app',
     ],
     credentials: true,
   });
