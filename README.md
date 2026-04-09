@@ -1,4 +1,4 @@
-# Imba Quizlet Server
+# Imba Learn Server
 
 Comprehensive backend for a quizlet-style application built with NestJS, TypeORM and PostgreSQL. This document describes how to setup, run, test, and work with the project. It also contains a compact API reference and examples.
 
@@ -95,7 +95,7 @@ pnpm run schema:sync
 pnpm run schema:drop
 ```
 
-> Note: `synchronize: true` is enabled in `src/config/typeorm.config.ts` for development convenience. Disable in production and use migrations.
+> Note: `synchronize: true` is enabled in `src/infrastructure/persistence/typeorm.config.ts` for development convenience. Disable in production and use migrations.
 
 ## Running the app
 

@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersController } from './user.controller';
 import { UsersService } from './user.service';
-import { User } from './user.entity';
+import { User } from 'src/infrastructure/persistence/entities/user.entity';
 import { Repository } from 'typeorm';
 import { AuthModule } from '../auth/auth.module';
 // import { AdminUsersController } from './admin-user.controller';
-import { Module as ModuleEntity } from '../v1/module/module.entity';
+import { Module as ModuleEntity } from 'src/infrastructure/persistence/entities/module.entity';
 
 @Module({
   imports: [

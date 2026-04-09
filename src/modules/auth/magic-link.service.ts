@@ -11,7 +11,7 @@ import { MailService } from 'src/common/mail/mail.service';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { MoreThan, Repository } from 'typeorm';
-import { MagicLink } from './magic-link.entity';
+import { MagicLink } from 'src/infrastructure/persistence/entities/magic-link.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LoggerService } from 'src/common/logger/logger.service';
 

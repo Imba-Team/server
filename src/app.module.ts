@@ -1,17 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { typeOrmConfigAsync } from './config/typeorm.config';
+import { typeOrmConfigAsync } from './infrastructure/persistence/typeorm.config';
 import { UsersModule } from './modules/users/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { ModuleModule } from './modules/v1/module/module.module';
-import { TermModule } from './modules/v1/terms/term.module';
+import { ModuleModule } from './modules/module/module.module';
+import { TermModule } from './modules/term/term-progress.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
-import { ModuleV2Module } from './modules/v2/module/module.module';
-import { TermProgressV2Module } from './modules/v2/term/term-progress.module';
 
 @Module({
   imports: [
@@ -32,8 +30,6 @@ import { TermProgressV2Module } from './modules/v2/term/term-progress.module';
     AuthModule,
     ModuleModule,
     TermModule,
-    ModuleV2Module,
-    TermProgressV2Module,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],
