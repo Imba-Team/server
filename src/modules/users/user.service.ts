@@ -13,6 +13,8 @@ import * as bcrypt from 'bcrypt';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { CreateUserDto } from './dtos/create-user.dto';
 import { UserStatus } from 'src/common/interfaces/user.interface';
+import { slugify } from 'src/common/utils/sligify';
+import { Role } from 'src/common/decorators/roles.decorator';
 
 @Injectable()
 export class UsersService {
@@ -33,15 +35,47 @@ export class UsersService {
         throw new ConflictException('User with this email already exists');
       }
 
-      if (userDto.password) {
-        userDto.password = await bcrypt.hash(userDto.password, 10);
-      }
+      const username = await this.allocateUsername(
+        manager,
+        userDto.name || userDto.email,
+      );
 
-      const newUser = manager.create(User, userDto);
-      const savedUser = await manager.save(User, newUser);
+      const hashed = userDto.password
+        ? await bcrypt.hash(userDto.password, 10)
+        : userDto.password;
 
-      return savedUser;
+      const newUser = manager.create(User, {
+        email: userDto.email,
+        username,
+        password: hashed,
+        status: userDto.status ?? 'active',
+        role: userDto.role ?? Role.USER,
+      });
+      return manager.save(User, newUser);
     });
+  }
+
+  private async allocateUsername(
+    manager: EntityManager,
+    baseInput: string,
+    excludeUserId?: string,
+  ): Promise<string> {
+    const base =
+      slugify(
+        baseInput.includes('@') ? baseInput.split('@')[0] : baseInput,
+        28,
+      ) || 'user';
+    let candidate = base;
+    for (let i = 0; i < 10_000; i++) {
+      const existing = await manager.findOne(User, {
+        where: { username: candidate },
+      });
+      if (!existing || existing.id === excludeUserId) {
+        return candidate;
+      }
+      candidate = `${base.slice(0, 18)}${i + 2}`;
+    }
+    return `${base}-${Date.now()}`;
   }
 
   async findAll(
@@ -90,8 +124,21 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    await this.userRepository.update(id, updateUserDto);
-    return await this.findById(id);
+    const user = await this.findById(id);
+    if (updateUserDto.email !== undefined) user.email = updateUserDto.email;
+    if (updateUserDto.name !== undefined) {
+      user.username = await this.allocateUsername(
+        this.entityManager,
+        updateUserDto.name,
+        id,
+      );
+    }
+    if (updateUserDto.status !== undefined) user.status = updateUserDto.status;
+    if (updateUserDto.role !== undefined) user.role = updateUserDto.role;
+    if (updateUserDto.profilePicture !== undefined) {
+      user.profilePicture = updateUserDto.profilePicture;
+    }
+    return this.userRepository.save(user);
   }
 
   async delete(id: string) {

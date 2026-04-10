@@ -1,23 +1,23 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Module as ModuleEntity } from 'src/infrastructure/persistence/entities/module.entity';
+import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
 import { User } from 'src/infrastructure/persistence/entities/user.entity';
 import { UsersModule } from 'src/modules/users/user.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
 import { ModuleController } from './module.controller';
 import { ModuleService } from './module.service';
-import { UserModule } from 'src/infrastructure/persistence/entities/user-module.entity';
-import { Term } from 'src/infrastructure/persistence/entities/term.entity';
-import { UserTermProgress } from 'src/infrastructure/persistence/entities/user-term-progress.entity';
+import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
+import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
+import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
-      ModuleEntity,
+      StudySet,
       User,
-      UserModule,
-      Term,
-      UserTermProgress,
+      FavoriteStudySet,
+      Flashcard,
+      FlashcardUserState,
     ]),
     UsersModule,
     AuthModule,

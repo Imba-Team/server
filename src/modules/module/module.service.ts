@@ -7,33 +7,35 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { LoggerService } from 'src/common/logger/logger.service';
-import { Module } from 'src/infrastructure/persistence/entities/module.entity';
+import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
 import { User } from 'src/infrastructure/persistence/entities/user.entity';
 import { UsersService } from 'src/modules/users/user.service';
 import { CreateModuleDto } from './dtos/create-module.dto';
 import { UpdateModuleDto } from './dtos/update-module.dto';
 import { UpdateVisibilityDto } from './dtos/update-visibility.dto';
 import { slugify } from 'src/common/utils/sligify';
-import { UserModule } from 'src/infrastructure/persistence/entities/user-module.entity';
-import { Term } from 'src/infrastructure/persistence/entities/term.entity';
-import { UserTermProgress } from 'src/infrastructure/persistence/entities/user-term-progress.entity';
+import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
+import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
+import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
 import { SearchModulesDto } from './dtos/search-modules.dto';
 import { plainToInstance } from 'class-transformer';
 import { ModuleResponseDto } from './dtos/module-response.dto';
 import { TermWithProgressDto } from 'src/modules/term/dtos/term-with-progress.dto';
+import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
+import { confidenceToStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 
 @Injectable()
 export class ModuleService {
   constructor(
     private readonly logger: LoggerService,
-    @InjectRepository(Module)
-    private readonly moduleRepository: Repository<Module>,
-    @InjectRepository(UserModule)
-    private readonly userModuleRepository: Repository<UserModule>,
-    @InjectRepository(UserTermProgress)
-    private readonly userTermProgressRepository: Repository<UserTermProgress>,
-    @InjectRepository(Term)
-    private readonly termRepository: Repository<Term>,
+    @InjectRepository(StudySet)
+    private readonly studySetRepository: Repository<StudySet>,
+    @InjectRepository(FavoriteStudySet)
+    private readonly favoriteStudySetRepository: Repository<FavoriteStudySet>,
+    @InjectRepository(FlashcardUserState)
+    private readonly flashcardUserStateRepository: Repository<FlashcardUserState>,
+    @InjectRepository(Flashcard)
+    private readonly flashcardRepository: Repository<Flashcard>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly usersService: UsersService,
@@ -44,8 +46,7 @@ export class ModuleService {
 
     const slug = slugify(dto.title);
 
-    // Combine duplicate checks into single query
-    const duplicate = await this.moduleRepository.findOne({
+    const duplicate = await this.studySetRepository.findOne({
       where: [{ slug }, { title: dto.title }],
     });
 
@@ -56,202 +57,227 @@ export class ModuleService {
       throw new ConflictException('Module title already exists');
     }
 
-    const newModule = this.moduleRepository.create({
-      ...dto,
-      slug,
-    });
-
-    const saved = await this.moduleRepository.save(newModule);
-
-    await this.userModuleRepository.save(
-      this.userModuleRepository.create({
+    const saved = await this.studySetRepository.save(
+      this.studySetRepository.create({
+        slug,
+        title: dto.title,
+        description: dto.description ?? null,
+        visibility:
+          dto.isPrivate === true
+            ? StudySetVisibility.PRIVATE
+            : StudySetVisibility.PUBLIC,
         userId,
-        moduleId: saved.id,
-        relation: 'owner',
       }),
     );
-    await this.ensureProgressRecords(userId, saved.id, true);
+
+    await this.ensureProgressRecords(userId, saved.id);
 
     return this.buildModuleForUser(saved.id, userId, true, true);
   }
 
-  async update(userId: string, moduleId: string, dto: UpdateModuleDto) {
-    await this.ensureOwnedModule(userId, moduleId);
-    await this.moduleRepository.update(moduleId, dto);
-    return this.buildModuleForUser(moduleId, userId, true);
+  async update(userId: string, studySetId: string, dto: UpdateModuleDto) {
+    await this.ensureOwnedStudySet(userId, studySetId);
+    const patch: Partial<StudySet> = {};
+    if (dto.title !== undefined) patch.title = dto.title;
+    if (dto.description !== undefined) patch.description = dto.description;
+    if (dto.isPrivate !== undefined) {
+      patch.visibility = dto.isPrivate
+        ? StudySetVisibility.PRIVATE
+        : StudySetVisibility.PUBLIC;
+    }
+    if (Object.keys(patch).length) {
+      await this.studySetRepository.update(studySetId, patch);
+    }
+    return this.buildModuleForUser(studySetId, userId, true);
   }
 
   async updateVisibility(
     userId: string,
-    moduleId: string,
+    studySetId: string,
     visibilityDto: UpdateVisibilityDto,
   ) {
-    await this.ensureOwnedModule(userId, moduleId);
-    await this.moduleRepository.update(moduleId, {
-      isPrivate: visibilityDto.isPrivate,
+    await this.ensureOwnedStudySet(userId, studySetId);
+    await this.studySetRepository.update(studySetId, {
+      visibility: visibilityDto.isPrivate
+        ? StudySetVisibility.PRIVATE
+        : StudySetVisibility.PUBLIC,
     });
 
-    return this.buildModuleForUser(moduleId, userId, true);
+    return this.buildModuleForUser(studySetId, userId, true);
   }
 
-  // Get modules owned by user with progress info
   async findCreatedModules(userId: string) {
-    const links = await this.userModuleRepository.find({
-      where: { userId, relation: 'owner' },
-      relations: ['module', 'module.terms'],
+    const sets = await this.studySetRepository.find({
+      where: { userId },
+      relations: ['flashcards'],
     });
-    const modules = links.map((l) => l.module).filter((m): m is Module => !!m);
-    return this.buildModulesForUserBatch(modules, userId, false);
+    const sorted = sets.map((s) => this.withSortedFlashcards(s));
+    return this.buildModulesForUserBatch(sorted, userId, false);
   }
 
   async findCollection(userId: string) {
-    const links = await this.userModuleRepository.find({
+    const owned = await this.studySetRepository.find({
       where: { userId },
-      relations: ['module', 'module.terms'],
+      relations: ['flashcards'],
+    });
+    const favLinks = await this.favoriteStudySetRepository.find({
+      where: { userId },
+      relations: ['studySet', 'studySet.flashcards'],
     });
 
-    const modules = links.map((link) => link.module);
-    return this.buildModulesForUserBatch(modules, userId, false);
+    const byId = new Map<string, StudySet>();
+    for (const s of owned) {
+      byId.set(s.id, this.withSortedFlashcards(s));
+    }
+    for (const link of favLinks) {
+      if (link.studySet && !byId.has(link.studySet.id)) {
+        byId.set(link.studySet.id, this.withSortedFlashcards(link.studySet));
+      }
+    }
+
+    return this.buildModulesForUserBatch([...byId.values()], userId, false);
   }
 
   async searchPublic(userId: string, query: SearchModulesDto) {
-    const qb = this.moduleRepository
-      .createQueryBuilder('m')
-      .leftJoinAndSelect('m.terms', 't')
-      .where('m.isPrivate = :isPrivate', { isPrivate: false });
+    const qb = this.studySetRepository
+      .createQueryBuilder('s')
+      .leftJoinAndSelect('s.flashcards', 'f')
+      .where('s.visibility = :vis', { vis: StudySetVisibility.PUBLIC })
+      .orderBy('f.orderIndex', 'ASC');
 
     if (query.q) {
       qb.andWhere(
-        '(LOWER(m.title) LIKE LOWER(:search) OR LOWER(m.description) LIKE LOWER(:search))',
+        '(LOWER(s.title) LIKE LOWER(:search) OR LOWER(s.description) LIKE LOWER(:search))',
         {
           search: `%${query.q}%`,
         },
       );
     }
 
-    const modules = await qb.getMany();
-
-    return this.buildModulesForUserBatch(modules, userId, false);
+    const sets = await qb.getMany();
+    const sorted = sets.map((s) => this.withSortedFlashcards(s));
+    return this.buildModulesForUserBatch(sorted, userId, false);
   }
 
-  async addToCollection(userId: string, moduleId: string) {
-    const module = await this.findModuleOrFail(moduleId);
-    await this.assertAccessible(module, userId);
+  async addToCollection(userId: string, studySetId: string) {
+    const studySet = await this.findStudySetOrFail(studySetId);
+    this.assertAccessible(studySet, userId);
 
-    const exists = await this.userModuleRepository.exist({
-      where: { userId, moduleId },
-    });
-    if (!exists) {
-      await this.userModuleRepository.save(
-        this.userModuleRepository.create({
-          userId,
-          moduleId,
-          relation: 'collected',
-        }),
-      );
+    if (studySet.userId !== userId) {
+      const exists = await this.favoriteStudySetRepository.exist({
+        where: { userId, studySetId },
+      });
+      if (!exists) {
+        await this.favoriteStudySetRepository.save(
+          this.favoriteStudySetRepository.create({ userId, studySetId }),
+        );
+      }
     }
-    await this.ensureProgressRecords(userId, moduleId, false);
+    await this.ensureProgressRecords(userId, studySetId);
 
-    return this.buildModuleForUser(moduleId, userId, true);
+    return this.buildModuleForUser(studySetId, userId, true);
   }
 
-  async removeFromCollection(userId: string, moduleId: string) {
-    const module = await this.findModuleOrFail(moduleId);
-    await this.assertAccessible(module, userId);
+  async removeFromCollection(userId: string, studySetId: string) {
+    const studySet = await this.findStudySetOrFail(studySetId);
+    this.assertAccessible(studySet, userId);
 
-    const link = await this.userModuleRepository.findOne({
-      where: { userId, moduleId },
-    });
-    if (!link || link.relation === 'owner') {
+    if (studySet.userId === userId) {
       throw new ForbiddenException(
         'Cannot remove your own module from collection',
       );
     }
 
-    await this.userModuleRepository.delete({ userId, moduleId });
+    await this.favoriteStudySetRepository.delete({ userId, studySetId });
 
-    return this.buildModuleForUser(moduleId, userId, true, false);
+    return this.buildModuleForUser(studySetId, userId, true, false);
   }
 
-  async getById(userId: string, moduleId: string) {
-    const module = await this.moduleRepository.findOne({
-      where: { id: moduleId },
-      relations: ['terms'],
+  async getById(userId: string, studySetId: string) {
+    const studySet = await this.studySetRepository.findOne({
+      where: { id: studySetId },
+      relations: ['flashcards'],
     });
 
-    if (!module) {
+    if (!studySet) {
       throw new NotFoundException('Module not found');
     }
 
-    await this.assertAccessible(module, userId);
+    this.assertAccessible(studySet, userId);
 
-    const isOwner = await this.isModuleOwner(userId, moduleId);
+    const sorted = this.withSortedFlashcards(studySet);
+    const isOwner = sorted.userId === userId;
     const isCollected =
       isOwner ||
-      (await this.userModuleRepository.exist({
-        where: { userId, moduleId },
+      (await this.favoriteStudySetRepository.exist({
+        where: { userId, studySetId },
       }));
 
     if (isCollected) {
-      await this.ensureProgressRecords(userId, module.id, isOwner);
+      await this.ensureProgressRecords(userId, sorted.id);
     }
 
-    return this.buildModuleForUser(module, userId, true, isCollected);
+    return this.buildModuleForUser(sorted, userId, true, isCollected);
+  }
+
+  private withSortedFlashcards(studySet: StudySet): StudySet {
+    if (studySet.flashcards?.length) {
+      studySet.flashcards.sort((a, b) => a.orderIndex - b.orderIndex);
+    }
+    return studySet;
   }
 
   private async buildModuleForUser(
-    moduleOrId: Module | string,
+    studySetOrId: StudySet | string,
     userId: string,
     includeTerms = false,
     alreadyCollected?: boolean,
   ): Promise<ModuleResponseDto> {
-    const module =
-      typeof moduleOrId === 'string'
-        ? await this.moduleRepository.findOne({
-            where: { id: moduleOrId },
-            relations: ['terms'],
+    const studySet =
+      typeof studySetOrId === 'string'
+        ? await this.studySetRepository.findOne({
+            where: { id: studySetOrId },
+            relations: ['flashcards'],
           })
-        : moduleOrId;
+        : studySetOrId;
 
-    if (!module) {
+    if (!studySet) {
       throw new NotFoundException('Module not found');
     }
 
-    const ownerUserId = await this.getOwnerUserId(module.id);
-    if (!ownerUserId) {
-      throw new NotFoundException('Module has no owner');
-    }
+    this.withSortedFlashcards(studySet);
 
+    const ownerUserId = studySet.userId;
     const isOwner = ownerUserId === userId;
     const isCollected = alreadyCollected ?? isOwner;
-    const terms = module.terms || [];
+    const terms = studySet.flashcards || [];
 
     if (isCollected && terms.length) {
-      await this.ensureProgressRecords(
-        userId,
-        module.id,
-        ownerUserId === userId,
-      );
+      await this.ensureProgressRecords(userId, studySet.id);
     }
 
     const [progress, owner] = await Promise.all([
-      this.calculateProgressForUser(userId, module.id, terms, isCollected),
+      this.calculateProgressForUser(userId, studySet.id, terms, isCollected),
       this.userRepository.findOne({
         where: { id: ownerUserId },
-        select: ['id', 'name', 'profilePicture'],
+        select: ['id', 'username', 'profilePicture'],
       }),
     ]);
 
     const termsWithProgress = includeTerms
-      ? await this.attachTermProgress(userId, module.id, terms, isCollected)
+      ? await this.attachTermProgress(userId, studySet.id, terms, isCollected)
       : undefined;
 
     return plainToInstance(
       ModuleResponseDto,
       {
-        ...module,
+        id: studySet.id,
+        slug: studySet.slug,
+        title: studySet.title,
+        description: studySet.description ?? '',
+        isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
         userId: ownerUserId,
-        ownerName: owner?.name,
+        ownerName: owner?.username,
         ownerImg: owner?.profilePicture,
         isOwner,
         isCollected,
@@ -265,18 +291,20 @@ export class ModuleService {
 
   private async attachTermProgress(
     userId: string,
-    moduleId: string,
-    terms: Term[],
+    studySetId: string,
+    flashcards: Flashcard[],
     isCollected: boolean,
   ): Promise<TermWithProgressDto[]> {
-    if (!terms.length) return [];
+    if (!flashcards.length) return [];
 
     if (!isCollected) {
-      return terms.map((term) =>
+      return flashcards.map((card) =>
         plainToInstance(
           TermWithProgressDto,
           {
-            ...term,
+            id: card.id,
+            term: card.term,
+            definition: card.definition,
             status: 'not_started',
             isStarred: false,
           },
@@ -285,21 +313,23 @@ export class ModuleService {
       );
     }
 
-    const termIds = terms.map((t) => t.id);
-    const progressRows = await this.userTermProgressRepository.find({
-      where: { userId, termId: In(termIds) },
+    const cardIds = flashcards.map((t) => t.id);
+    const progressRows = await this.flashcardUserStateRepository.find({
+      where: { userId, flashcardId: In(cardIds) },
     });
 
-    const progressMap = new Map(progressRows.map((p) => [p.termId, p]));
+    const progressMap = new Map(progressRows.map((p) => [p.flashcardId, p]));
 
-    return terms.map((term) => {
-      const progress = progressMap.get(term.id);
+    return flashcards.map((card) => {
+      const row = progressMap.get(card.id);
       return plainToInstance(
         TermWithProgressDto,
         {
-          ...term,
-          status: progress?.status ?? 'not_started',
-          isStarred: progress?.isStarred ?? false,
+          id: card.id,
+          term: card.term,
+          definition: card.definition,
+          status: confidenceToStatus(row ?? null),
+          isStarred: row?.isStarred ?? false,
         },
         { excludeExtraneousValues: true },
       );
@@ -308,23 +338,23 @@ export class ModuleService {
 
   private async calculateProgressForUser(
     userId: string,
-    moduleId: string,
-    terms: Term[],
+    studySetId: string,
+    flashcards: Flashcard[],
     isCollected: boolean,
   ): Promise<{ not_started: number; in_progress: number; completed: number }> {
     const defaultProgress = {
-      not_started: terms.length ? 1 : 0,
+      not_started: flashcards.length ? 1 : 0,
       in_progress: 0,
       completed: 0,
     };
 
-    if (!isCollected || !terms.length) {
+    if (!isCollected || !flashcards.length) {
       return defaultProgress;
     }
 
-    const termIds = terms.map((t) => t.id);
-    const progressRows = await this.userTermProgressRepository.find({
-      where: { userId, termId: In(termIds) },
+    const cardIds = flashcards.map((t) => t.id);
+    const progressRows = await this.flashcardUserStateRepository.find({
+      where: { userId, flashcardId: In(cardIds) },
     });
 
     if (!progressRows.length) {
@@ -333,13 +363,13 @@ export class ModuleService {
 
     const counts = progressRows.reduce(
       (acc, row) => {
-        acc[row.status]++;
+        acc[confidenceToStatus(row)]++;
         return acc;
       },
       { not_started: 0, in_progress: 0, completed: 0 },
     );
 
-    const total = terms.length;
+    const total = flashcards.length;
 
     return {
       not_started: counts.not_started / total,
@@ -348,143 +378,121 @@ export class ModuleService {
     };
   }
 
-  private async ensureProgressRecords(
-    userId: string,
-    moduleId: string,
-    seedFromExistingStatus: boolean,
-  ) {
-    const terms = await this.termRepository.find({ where: { moduleId } });
-    if (!terms.length) return;
+  private async ensureProgressRecords(userId: string, studySetId: string) {
+    const cards = await this.flashcardRepository.find({
+      where: { studySetId },
+    });
+    if (!cards.length) return;
 
-    const termIds = terms.map((t) => t.id);
-    const existing = await this.userTermProgressRepository.find({
-      where: { userId, termId: In(termIds) },
+    const cardIds = cards.map((t) => t.id);
+    const existing = await this.flashcardUserStateRepository.find({
+      where: { userId, flashcardId: In(cardIds) },
     });
 
-    const existingMap = new Set(existing.map((e) => e.termId));
+    const existingMap = new Set(existing.map((e) => e.flashcardId));
 
-    const missing = terms
+    const toCreate = cards
       .filter((t) => !existingMap.has(t.id))
-      .map((term) =>
-        this.userTermProgressRepository.create({
+      .map((card) =>
+        this.flashcardUserStateRepository.create({
           userId,
-          termId: term.id,
-          status: seedFromExistingStatus ? 'not_started' : 'not_started',
-          isStarred: false,
+          flashcardId: card.id,
         }),
       );
 
-    if (missing.length) {
-      await this.userTermProgressRepository.save(missing);
+    if (toCreate.length) {
+      await this.flashcardUserStateRepository.save(toCreate);
     }
   }
 
-  private async ensureOwnedModule(userId: string, moduleId: string) {
-    const module = await this.findModuleOrFail(moduleId);
-    if (!(await this.isModuleOwner(userId, moduleId))) {
+  private async ensureOwnedStudySet(userId: string, studySetId: string) {
+    const studySet = await this.findStudySetOrFail(studySetId);
+    if (studySet.userId !== userId) {
       throw new ForbiddenException('You can only modify your own modules');
     }
-    return module;
+    return studySet;
   }
 
-  private async assertAccessible(module: Module, userId: string) {
-    if (!module.isPrivate) return;
-    if (await this.isModuleOwner(userId, module.id)) return;
+  private assertAccessible(studySet: StudySet, userId: string) {
+    if (studySet.visibility !== StudySetVisibility.PRIVATE) return;
+    if (studySet.userId === userId) return;
     throw new ForbiddenException('Module is private');
   }
 
-  private async getOwnerUserId(moduleId: string): Promise<string | undefined> {
-    const row = await this.userModuleRepository.findOne({
-      where: { moduleId, relation: 'owner' },
+  private async findStudySetOrFail(studySetId: string): Promise<StudySet> {
+    const studySet = await this.studySetRepository.findOne({
+      where: { id: studySetId },
     });
-    return row?.userId;
-  }
-
-  private async isModuleOwner(
-    userId: string,
-    moduleId: string,
-  ): Promise<boolean> {
-    return this.userModuleRepository.exist({
-      where: { userId, moduleId, relation: 'owner' },
-    });
-  }
-
-  private async findModuleOrFail(moduleId: string): Promise<Module> {
-    const module = await this.moduleRepository.findOne({
-      where: { id: moduleId },
-    });
-    if (!module) {
+    if (!studySet) {
       throw new NotFoundException('Module not found');
     }
-    return module;
+    return studySet;
   }
 
   private async buildModulesForUserBatch(
-    modules: Module[],
+    studySets: StudySet[],
     userId: string,
     includeTerms: boolean,
   ): Promise<ModuleResponseDto[]> {
-    if (!modules.length) return [];
+    if (!studySets.length) return [];
 
-    const moduleIds = modules.map((m) => m.id);
+    const studySetIds = studySets.map((m) => m.id);
+    const ownerIds = [...new Set(studySets.map((m) => m.userId))];
 
-    const [ownerLinks, userModules] = await Promise.all([
-      this.userModuleRepository.find({
-        where: { moduleId: In(moduleIds), relation: 'owner' },
-      }),
-      this.userModuleRepository.find({
-        where: { userId, moduleId: In(moduleIds) },
+    const [ownerUsers, favoriteLinks] = await Promise.all([
+      ownerIds.length
+        ? this.userRepository.find({
+            where: { id: In(ownerIds) },
+            select: ['id', 'username', 'profilePicture'],
+          })
+        : Promise.resolve([] as User[]),
+      this.favoriteStudySetRepository.find({
+        where: { userId, studySetId: In(studySetIds) },
       }),
     ]);
 
-    const ownerIdByModuleId = new Map(
-      ownerLinks.map((l) => [l.moduleId, l.userId] as const),
-    );
-    const ownerIds = [...new Set(ownerLinks.map((l) => l.userId))];
-
-    const ownerUsers = ownerIds.length
-      ? await this.userRepository.find({
-          where: { id: In(ownerIds) },
-          select: ['id', 'name', 'profilePicture'],
-        })
-      : [];
-
     const ownerMap = new Map(ownerUsers.map((o) => [o.id, o]));
-    const collectedModuleIds = new Set(userModules.map((um) => um.moduleId));
+    const favoritedIds = new Set(favoriteLinks.map((f) => f.studySetId));
 
     return Promise.all(
-      modules.map(async (module) => {
-        const ownerUserId = ownerIdByModuleId.get(module.id);
+      studySets.map(async (studySet) => {
+        this.withSortedFlashcards(studySet);
+        const ownerUserId = studySet.userId;
         const isOwner = ownerUserId === userId;
-        const isCollected = isOwner || collectedModuleIds.has(module.id);
-        const terms = module.terms || [];
-        const owner = ownerUserId ? ownerMap.get(ownerUserId) : undefined;
+        const isCollected = isOwner || favoritedIds.has(studySet.id);
+        const terms = studySet.flashcards || [];
+        const owner = ownerMap.get(ownerUserId);
 
-        if (isCollected && terms.length && ownerUserId !== undefined) {
-          await this.ensureProgressRecords(
-            userId,
-            module.id,
-            ownerUserId === userId,
-          );
+        if (isCollected && terms.length) {
+          await this.ensureProgressRecords(userId, studySet.id);
         }
 
         const progress = await this.calculateProgressForUser(
           userId,
-          module.id,
+          studySet.id,
           terms,
           isCollected,
         );
 
         const termsWithProgress = includeTerms
-          ? await this.attachTermProgress(userId, module.id, terms, isCollected)
+          ? await this.attachTermProgress(
+              userId,
+              studySet.id,
+              terms,
+              isCollected,
+            )
           : undefined;
 
         return plainToInstance(
           ModuleResponseDto,
           {
-            ...module,
+            id: studySet.id,
+            slug: studySet.slug,
+            title: studySet.title,
+            description: studySet.description ?? '',
+            isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
             userId: ownerUserId,
-            ownerName: owner?.name,
+            ownerName: owner?.username,
             ownerImg: owner?.profilePicture,
             isOwner,
             isCollected,

@@ -3,22 +3,8 @@
 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Module } from './entities/module.entity';
-import { Term } from './entities/term.entity';
-import { User } from './entities/user.entity';
-import { UserModule } from './entities/user-module.entity';
-import { UserTermProgress } from './entities/user-term-progress.entity';
-import { MagicLink } from './entities/magic-link.entity';
+import { PERSISTENCE_ENTITIES } from './entity-registry';
 import { DataSource, DataSourceOptions } from 'typeorm';
-
-const persistenceEntities = [
-  Module,
-  Term,
-  User,
-  UserModule,
-  UserTermProgress,
-  MagicLink,
-];
 
 TypeOrmModule.forRootAsync({
   imports: [ConfigModule],
@@ -28,7 +14,7 @@ TypeOrmModule.forRootAsync({
 
     const baseOptions: Partial<DataSourceOptions> = {
       type: 'mysql',
-      entities: persistenceEntities,
+      entities: [...PERSISTENCE_ENTITIES],
       synchronize: true,
     };
 

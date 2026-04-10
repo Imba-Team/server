@@ -6,281 +6,289 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { LoggerService } from 'src/common/logger/logger.service';
-import { Term } from 'src/infrastructure/persistence/entities/term.entity';
-import { Module } from 'src/infrastructure/persistence/entities/module.entity';
-import { UserModule } from 'src/infrastructure/persistence/entities/user-module.entity';
-import { UserTermProgress } from 'src/infrastructure/persistence/entities/user-term-progress.entity';
+import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
+import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
+import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
+import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
 import { UpdateTermProgressDto } from './dtos/update-term-progress.dto';
 import { plainToInstance } from 'class-transformer';
 import { TermWithProgressDto } from './dtos/term-with-progress.dto';
+import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
+import {
+  confidenceToStatus,
+  nextStatusAfterAnswer,
+  statusToConfidence,
+} from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 
 @Injectable()
 export class TermProgressService {
   constructor(
     private readonly logger: LoggerService,
-    @InjectRepository(Term)
-    private readonly termRepository: Repository<Term>,
-    @InjectRepository(Module)
-    private readonly moduleRepository: Repository<Module>,
-    @InjectRepository(UserModule)
-    private readonly userModuleRepository: Repository<UserModule>,
-    @InjectRepository(UserTermProgress)
-    private readonly userTermProgressRepository: Repository<UserTermProgress>,
+    @InjectRepository(Flashcard)
+    private readonly flashcardRepository: Repository<Flashcard>,
+    @InjectRepository(StudySet)
+    private readonly studySetRepository: Repository<StudySet>,
+    @InjectRepository(FavoriteStudySet)
+    private readonly favoriteStudySetRepository: Repository<FavoriteStudySet>,
+    @InjectRepository(FlashcardUserState)
+    private readonly flashcardUserStateRepository: Repository<FlashcardUserState>,
   ) {}
 
   async updateProgress(
     userId: string,
-    termId: string,
+    flashcardId: string,
     dto: UpdateTermProgressDto,
   ): Promise<TermWithProgressDto> {
-    const term = await this.termRepository.findOne({ where: { id: termId } });
-    if (!term) {
+    const flashcard = await this.flashcardRepository.findOne({
+      where: { id: flashcardId },
+    });
+    if (!flashcard) {
       throw new NotFoundException('Term not found');
     }
 
-    const module = await this.moduleRepository.findOne({
-      where: { id: term.moduleId },
+    const studySet = await this.studySetRepository.findOne({
+      where: { id: flashcard.studySetId },
     });
 
-    if (!module) {
+    if (!studySet) {
       throw new NotFoundException('Module not found');
     }
 
-    const isOwner = await this.isModuleOwner(userId, module.id);
-    if (module.isPrivate && !isOwner) {
+    const isOwner = await this.isStudySetOwner(userId, studySet.id);
+    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
       throw new ForbiddenException('Module is private');
     }
 
     if (!isOwner) {
-      const inCollection = await this.userModuleRepository.exist({
-        where: { userId, moduleId: module.id },
+      const inCollection = await this.favoriteStudySetRepository.exist({
+        where: { userId, studySetId: studySet.id },
       });
 
       if (!inCollection) {
         throw new ForbiddenException('Add the module to your collection first');
       }
     } else {
-      await this.ensureProgressRecords(userId, module.id, true);
+      await this.ensureProgressRecords(userId, studySet.id);
     }
 
-    let progress = await this.userTermProgressRepository.findOne({
-      where: { userId, termId },
+    let state = await this.flashcardUserStateRepository.findOne({
+      where: { userId, flashcardId },
     });
 
-    if (!progress) {
-      progress = this.userTermProgressRepository.create({
+    if (!state) {
+      state = this.flashcardUserStateRepository.create({
         userId,
-        termId,
-        status: isOwner ? 'not_started' : 'not_started',
-        isStarred: isOwner ? false : false,
+        flashcardId,
       });
     }
 
     if (dto.status) {
-      progress.status = dto.status;
+      state.confidenceLevel = statusToConfidence(dto.status);
     }
 
     if (dto.isStarred !== undefined) {
-      progress.isStarred = dto.isStarred;
+      state.isStarred = dto.isStarred;
     }
 
-    const saved = await this.userTermProgressRepository.save(progress);
+    const saved = await this.flashcardUserStateRepository.save(state);
 
     return plainToInstance(
       TermWithProgressDto,
-      { ...term, status: saved.status, isStarred: saved.isStarred },
+      {
+        id: flashcard.id,
+        term: flashcard.term,
+        definition: flashcard.definition,
+        status: confidenceToStatus(saved),
+        isStarred: saved.isStarred,
+      },
       { excludeExtraneousValues: true },
     );
   }
 
   async updateStatus(
     userId: string,
-    termId: string,
+    flashcardId: string,
     success: boolean,
   ): Promise<TermWithProgressDto> {
     this.logger.log(
-      `Attempting to ${success ? 'upgrade' : 'decrease'} status of term with ID: ${termId}`,
+      `Attempting to ${success ? 'upgrade' : 'decrease'} status of term with ID: ${flashcardId}`,
     );
 
-    const term = await this.termRepository.findOne({ where: { id: termId } });
-    if (!term) {
-      this.logger.warn(`Term with ID ${termId} not found for status update.`);
+    const flashcard = await this.flashcardRepository.findOne({
+      where: { id: flashcardId },
+    });
+    if (!flashcard) {
+      this.logger.warn(
+        `Term with ID ${flashcardId} not found for status update.`,
+      );
       throw new NotFoundException('Term not found');
     }
 
-    const module = await this.moduleRepository.findOne({
-      where: { id: term.moduleId },
+    const studySet = await this.studySetRepository.findOne({
+      where: { id: flashcard.studySetId },
     });
 
-    if (!module) {
-      this.logger.warn(`Module for term ID ${termId} not found.`);
+    if (!studySet) {
+      this.logger.warn(`Module for term ID ${flashcardId} not found.`);
       throw new NotFoundException('Module not found');
     }
 
-    const isOwner = await this.isModuleOwner(userId, module.id);
-    if (module.isPrivate && !isOwner) {
+    const isOwner = await this.isStudySetOwner(userId, studySet.id);
+    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
       this.logger.warn(
-        `User ${userId} attempted to update status of term ${termId} in private module ${module.id}`,
+        `User ${userId} attempted to update status of term ${flashcardId} in private module ${studySet.id}`,
       );
       throw new ForbiddenException('Module is private');
     }
 
     if (!isOwner) {
-      const inCollection = await this.userModuleRepository.exist({
-        where: { userId, moduleId: module.id },
+      const inCollection = await this.favoriteStudySetRepository.exist({
+        where: { userId, studySetId: studySet.id },
       });
 
       if (!inCollection) {
         this.logger.warn(
-          `User ${userId} attempted to update status of term ${termId} without having module ${module.id} in collection`,
+          `User ${userId} attempted to update status of term ${flashcardId} without having module ${studySet.id} in collection`,
         );
         throw new ForbiddenException('Add the module to your collection first');
       }
     } else {
-      await this.ensureProgressRecords(userId, module.id, true);
+      await this.ensureProgressRecords(userId, studySet.id);
     }
 
-    let progress = await this.userTermProgressRepository.findOne({
-      where: { userId, termId },
+    let state = await this.flashcardUserStateRepository.findOne({
+      where: { userId, flashcardId },
     });
 
-    if (!progress) {
-      progress = this.userTermProgressRepository.create({
+    if (!state) {
+      state = this.flashcardUserStateRepository.create({
         userId,
-        termId,
-        status: isOwner ? 'not_started' : 'not_started',
-        isStarred: isOwner ? false : false,
+        flashcardId,
       });
     }
 
-    const currentStatus = progress.status;
-    let newStatus = currentStatus;
-
-    // Upgrade rules (success === true):
-    // not_started -> in_progress
-    // in_progress -> completed
-    if (success) {
-      if (currentStatus === 'not_started') {
-        newStatus = 'in_progress';
-      } else if (currentStatus === 'in_progress') {
-        newStatus = 'completed';
-      }
-    } else {
-      // Decrease rules (success === false):
-      // completed -> in_progress
-      // in_progress -> not_started
-      if (currentStatus === 'completed') {
-        newStatus = 'in_progress';
-      } else if (currentStatus === 'in_progress') {
-        newStatus = 'not_started';
-      }
-    }
+    const currentStatus = confidenceToStatus(state);
+    const newStatus = nextStatusAfterAnswer(currentStatus, success);
 
     if (newStatus !== currentStatus) {
-      progress.status = newStatus;
-      const saved = await this.userTermProgressRepository.save(progress);
+      state.confidenceLevel = statusToConfidence(newStatus);
+      const saved = await this.flashcardUserStateRepository.save(state);
       this.logger.log(
-        `Successfully ${success ? 'upgraded' : 'decreased'} status of term with ID: ${termId} to ${newStatus}`,
+        `Successfully ${success ? 'upgraded' : 'decreased'} status of term with ID: ${flashcardId} to ${newStatus}`,
       );
       return plainToInstance(
         TermWithProgressDto,
-        { ...term, status: saved.status, isStarred: saved.isStarred },
+        {
+          id: flashcard.id,
+          term: flashcard.term,
+          definition: flashcard.definition,
+          status: confidenceToStatus(saved),
+          isStarred: saved.isStarred,
+        },
         { excludeExtraneousValues: true },
       );
     }
 
     return plainToInstance(
       TermWithProgressDto,
-      { ...term, status: progress.status, isStarred: progress.isStarred },
+      {
+        id: flashcard.id,
+        term: flashcard.term,
+        definition: flashcard.definition,
+        status: confidenceToStatus(state),
+        isStarred: state.isStarred,
+      },
       { excludeExtraneousValues: true },
     );
   }
 
   async getProgress(
     userId: string,
-    termId: string,
+    flashcardId: string,
   ): Promise<TermWithProgressDto> {
-    const term = await this.termRepository.findOne({ where: { id: termId } });
-    if (!term) {
+    const flashcard = await this.flashcardRepository.findOne({
+      where: { id: flashcardId },
+    });
+    if (!flashcard) {
       throw new NotFoundException('Term not found');
     }
 
-    const module = await this.moduleRepository.findOne({
-      where: { id: term.moduleId },
+    const studySet = await this.studySetRepository.findOne({
+      where: { id: flashcard.studySetId },
     });
 
-    if (!module) {
+    if (!studySet) {
       throw new NotFoundException('Module not found');
     }
 
-    const isOwner = await this.isModuleOwner(userId, module.id);
-    if (module.isPrivate && !isOwner) {
+    const isOwner = await this.isStudySetOwner(userId, studySet.id);
+    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
       throw new ForbiddenException('Module is private');
     }
 
-    const progressRow = await this.userTermProgressRepository.findOne({
-      where: { userId, termId },
+    const progressRow = await this.flashcardUserStateRepository.findOne({
+      where: { userId, flashcardId },
     });
 
     const isCollected =
       isOwner ||
-      (await this.userModuleRepository.exist({
-        where: { userId, moduleId: module.id },
+      (await this.favoriteStudySetRepository.exist({
+        where: { userId, studySetId: studySet.id },
       }));
 
     if (isCollected && !progressRow) {
-      await this.ensureProgressRecords(userId, module.id, isOwner);
-      return this.getProgress(userId, termId);
+      await this.ensureProgressRecords(userId, studySet.id);
+      return this.getProgress(userId, flashcardId);
     }
 
     return plainToInstance(
       TermWithProgressDto,
       {
-        ...term,
-        status: progressRow?.status ?? 'not_started',
+        id: flashcard.id,
+        term: flashcard.term,
+        definition: flashcard.definition,
+        status: confidenceToStatus(progressRow ?? null),
         isStarred: progressRow?.isStarred ?? false,
       },
       { excludeExtraneousValues: true },
     );
   }
 
-  private async ensureProgressRecords(
-    userId: string,
-    moduleId: string,
-    seedFromExistingStatus: boolean,
-  ) {
-    const terms = await this.termRepository.find({ where: { moduleId } });
-    if (!terms.length) return;
+  private async ensureProgressRecords(userId: string, studySetId: string) {
+    const cards = await this.flashcardRepository.find({
+      where: { studySetId },
+    });
+    if (!cards.length) return;
 
-    const termIds = terms.map((t) => t.id);
-    const existing = await this.userTermProgressRepository.find({
-      where: { userId, termId: In(termIds) },
+    const cardIds = cards.map((t) => t.id);
+    const existing = await this.flashcardUserStateRepository.find({
+      where: { userId, flashcardId: In(cardIds) },
     });
 
-    const existingMap = new Set(existing.map((e) => e.termId));
+    const existingMap = new Set(existing.map((e) => e.flashcardId));
 
-    const missing = terms
+    const toCreate = cards
       .filter((t) => !existingMap.has(t.id))
-      .map((term) =>
-        this.userTermProgressRepository.create({
+      .map((card) =>
+        this.flashcardUserStateRepository.create({
           userId,
-          termId: term.id,
-          status: seedFromExistingStatus ? 'not_started' : 'not_started',
-          isStarred: seedFromExistingStatus ? false : false,
+          flashcardId: card.id,
         }),
       );
 
-    if (missing.length) {
-      await this.userTermProgressRepository.save(missing);
+    if (toCreate.length) {
+      await this.flashcardUserStateRepository.save(toCreate);
     }
   }
 
-  private async isModuleOwner(
+  private async isStudySetOwner(
     userId: string,
-    moduleId: string,
+    studySetId: string,
   ): Promise<boolean> {
-    return this.userModuleRepository.exist({
-      where: { userId, moduleId, relation: 'owner' },
+    const row = await this.studySetRepository.findOne({
+      where: { id: studySetId },
+      select: ['userId'],
     });
+    return row?.userId === userId;
   }
 }

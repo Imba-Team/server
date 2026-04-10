@@ -9,8 +9,14 @@ import {
   OneToMany,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
-import { UserModule } from './user-module.entity';
-import { UserTermProgress } from './user-term-progress.entity';
+import { StudySet } from './study-set.entity';
+import { Comment } from './comment.entity';
+import { StudySession } from './study-session.entity';
+import { StudySetCollaborator } from './study-set-collaborator.entity';
+import { FavoriteStudySet } from './favorite-study-set.entity';
+import { Folder } from './folder.entity';
+import { TestAttempt } from './test-attempt.entity';
+import { FlashcardUserState } from './flashcard-user-state.entity';
 
 @Entity('user')
 export class User {
@@ -21,30 +27,43 @@ export class User {
   @Column({ unique: true })
   email: string;
 
-  @Column()
-  name: string;
+  @ApiProperty({ example: 'johndoe' })
+  @Column({ unique: true })
+  username: string;
 
-  @Column({ default: 'active' })
-  status: 'active' | 'inactive' = 'active';
+  @Column({ type: 'varchar', nullable: true })
+  status: string | null;
 
   @Exclude()
   @Column({ select: false })
   password: string;
 
-  @OneToMany(() => UserModule, (userModule: UserModule) => userModule.user, {
-    cascade: false,
-  })
-  userModules: UserModule[];
-
-  @OneToMany(
-    () => UserTermProgress,
-    (progress: UserTermProgress) => progress.user,
-    { cascade: false },
-  )
-  termProgress: UserTermProgress[];
-
   @Column({ default: 'user' })
   role: Role;
+
+  @OneToMany(() => StudySet, (s) => s.user)
+  studySets: StudySet[];
+
+  @OneToMany(() => Comment, (c) => c.user)
+  comments: Comment[];
+
+  @OneToMany(() => StudySession, (s) => s.user)
+  studySessions: StudySession[];
+
+  @OneToMany(() => FavoriteStudySet, (f) => f.user)
+  favoriteStudySets: FavoriteStudySet[];
+
+  @OneToMany(() => StudySetCollaborator, (c) => c.user)
+  collaborations: StudySetCollaborator[];
+
+  @OneToMany(() => Folder, (f) => f.user)
+  folders: Folder[];
+
+  @OneToMany(() => TestAttempt, (t) => t.user)
+  testAttempts: TestAttempt[];
+
+  @OneToMany(() => FlashcardUserState, (fs) => fs.user)
+  flashcardUserStates: FlashcardUserState[];
 
   @CreateDateColumn()
   createdAt: Date;
@@ -54,4 +73,9 @@ export class User {
 
   @Column({ type: 'text', nullable: true })
   profilePicture?: string | null;
+
+  /** API compatibility: display name maps to username */
+  get name(): string {
+    return this.username;
+  }
 }
