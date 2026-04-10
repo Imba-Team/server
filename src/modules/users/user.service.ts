@@ -78,6 +78,25 @@ export class UsersService {
     return `${base}-${Date.now()}`;
   }
 
+  /** Fills `username` for rows created before the username column existed */
+  private async ensureUsernameBackfill(user: User): Promise<User> {
+    if (user.username != null && user.username !== '') {
+      return user;
+    }
+    const username = await this.allocateUsername(
+      this.entityManager,
+      user.legacyName || user.email,
+      user.id,
+    );
+    await this.userRepository.update(user.id, {
+      username,
+      legacyName: null,
+    });
+    user.username = username;
+    user.legacyName = null;
+    return user;
+  }
+
   async findAll(
     page: number = 1,
     limit: number = 10,
@@ -102,25 +121,29 @@ export class UsersService {
     };
   }
 
-  findByEmail(email: string) {
-    return this.userRepository
+  async findByEmail(email: string): Promise<User | null> {
+    const user = await this.userRepository
       .createQueryBuilder('user')
-      .addSelect('user.password') // This includes the password in the result
+      .addSelect('user.password')
       .where('user.email = :email', { email })
       .getOne();
+    if (!user) {
+      return null;
+    }
+    return this.ensureUsernameBackfill(user);
   }
 
   async findById(id: string) {
     const user = await this.userRepository
       .createQueryBuilder('user')
-      .addSelect('user.password') // This includes the password in the result
+      .addSelect('user.password')
       .where('user.id = :id', { id })
       .getOne();
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    return user;
+    return this.ensureUsernameBackfill(user);
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {

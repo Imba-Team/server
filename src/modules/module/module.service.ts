@@ -260,7 +260,7 @@ export class ModuleService {
       this.calculateProgressForUser(userId, studySet.id, terms, isCollected),
       this.userRepository.findOne({
         where: { id: ownerUserId },
-        select: ['id', 'username', 'profilePicture'],
+        select: ['id', 'username', 'legacyName', 'profilePicture'],
       }),
     ]);
 
@@ -277,7 +277,7 @@ export class ModuleService {
         description: studySet.description ?? '',
         isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
         userId: ownerUserId,
-        ownerName: owner?.username,
+        ownerName: owner?.username ?? owner?.legacyName ?? undefined,
         ownerImg: owner?.profilePicture,
         isOwner,
         isCollected,
@@ -443,7 +443,7 @@ export class ModuleService {
       ownerIds.length
         ? this.userRepository.find({
             where: { id: In(ownerIds) },
-            select: ['id', 'username', 'profilePicture'],
+            select: ['id', 'username', 'legacyName', 'profilePicture'],
           })
         : Promise.resolve([] as User[]),
       this.favoriteStudySetRepository.find({
@@ -492,7 +492,7 @@ export class ModuleService {
             description: studySet.description ?? '',
             isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
             userId: ownerUserId,
-            ownerName: owner?.username,
+            ownerName: owner?.username ?? owner?.legacyName ?? undefined,
             ownerImg: owner?.profilePicture,
             isOwner,
             isCollected,

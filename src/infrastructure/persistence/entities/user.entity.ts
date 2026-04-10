@@ -27,9 +27,17 @@ export class User {
   @Column({ unique: true })
   email: string;
 
+  /**
+   * Nullable only at DB level so existing rows can be migrated from legacy `name`.
+   * Application code always sets this on create; `UsersService` backfills on read.
+   */
   @ApiProperty({ example: 'johndoe' })
-  @Column({ unique: true })
-  username: string;
+  @Column({ type: 'varchar', unique: true, nullable: true })
+  username: string | null;
+
+  /** Pre–study-set-schema display name; DB column remains `name` where it exists */
+  @Column({ type: 'varchar', nullable: true, name: 'name' })
+  legacyName: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   status: string | null;
@@ -74,8 +82,10 @@ export class User {
   @Column({ type: 'text', nullable: true })
   profilePicture?: string | null;
 
-  /** API compatibility: display name maps to username */
+  /** API compatibility: prefers username, then legacy `name` */
   get name(): string {
-    return this.username;
+    const u = (this.username ?? '').trim();
+    if (u) return u;
+    return (this.legacyName ?? '').trim() || 'user';
   }
 }
