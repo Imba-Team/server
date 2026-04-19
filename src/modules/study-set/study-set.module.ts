@@ -8,17 +8,10 @@ import { StudySetController } from './study-set.controller';
 import { StudySetService } from './study-set.service';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
 import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
-import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      StudySet,
-      User,
-      FavoriteStudySet,
-      Flashcard,
-      FlashcardUserState,
-    ]),
+    TypeOrmModule.forFeature([StudySet, User, FavoriteStudySet, Flashcard]),
     UsersModule,
     AuthModule,
   ],

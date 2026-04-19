@@ -16,13 +16,10 @@ import { In, Repository } from 'typeorm';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { slugify } from 'src/common/utils/sligify';
 import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
-import { confidenceToStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
 import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
-import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
 import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
 import { User } from 'src/infrastructure/persistence/entities/user.entity';
-import { FlashcardWithProgressDto } from 'src/modules/flashcard/dtos/flashcard-with-progress.dto';
 import { UsersService } from 'src/modules/users/user.service';
 
 // DTOs
@@ -40,8 +37,6 @@ export class StudySetService {
     private readonly studySetRepository: Repository<StudySet>,
     @InjectRepository(FavoriteStudySet)
     private readonly favoriteStudySetRepository: Repository<FavoriteStudySet>,
-    @InjectRepository(FlashcardUserState)
-    private readonly flashcardUserStateRepository: Repository<FlashcardUserState>,
     @InjectRepository(Flashcard)
     private readonly flashcardRepository: Repository<Flashcard>,
     @InjectRepository(User)
@@ -92,10 +87,9 @@ export class StudySetService {
       }),
     );
 
-    await this.ensureProgressRecords(userId, saved.id);
     this.logger.log(`Study set created: id=${saved.id}, userId=${userId}`);
 
-    return this.buildStudySetForUser(saved.id, userId, true, true);
+    return this.buildStudySetForUser(saved.id, userId);
   }
 
   async update(userId: string, studySetId: string, dto: UpdateStudySetDto) {
@@ -114,7 +108,7 @@ export class StudySetService {
       await this.studySetRepository.update(studySetId, patch);
       this.logger.log(`Study set updated: id=${studySetId}, userId=${userId}`);
     }
-    return this.buildStudySetForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId);
   }
 
   async updateVisibility(
@@ -135,7 +129,7 @@ export class StudySetService {
       `Study set visibility updated: id=${studySetId}, private=${visibilityDto.isPrivate}`,
     );
 
-    return this.buildStudySetForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId);
   }
 
   // Section: Study set listing and discovery
@@ -147,7 +141,7 @@ export class StudySetService {
       relations: ['flashcards'],
     });
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
-    return this.buildStudySetsForUserBatch(sorted, userId, false);
+    return this.buildStudySetsForUserBatch(sorted, userId);
   }
 
   async findCollection(userId: string) {
@@ -171,7 +165,7 @@ export class StudySetService {
       }
     }
 
-    return this.buildStudySetsForUserBatch([...byId.values()], userId, false);
+    return this.buildStudySetsForUserBatch([...byId.values()], userId);
   }
 
   async searchPublic(userId: string, query: SearchStudySetsDto) {
@@ -195,7 +189,7 @@ export class StudySetService {
 
     const sets = await qb.getMany();
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
-    return this.buildStudySetsForUserBatch(sorted, userId, false);
+    return this.buildStudySetsForUserBatch(sorted, userId);
   }
 
   // Section: Collection membership operations
@@ -220,9 +214,7 @@ export class StudySetService {
         );
       }
     }
-    await this.ensureProgressRecords(userId, studySetId);
-
-    return this.buildStudySetForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId);
   }
 
   async removeFromCollection(userId: string, studySetId: string) {
@@ -246,7 +238,7 @@ export class StudySetService {
       `Study set uncollected: studySetId=${studySetId}, userId=${userId}`,
     );
 
-    return this.buildStudySetForUser(studySetId, userId, true, false);
+    return this.buildStudySetForUser(studySetId, userId, false);
   }
 
   // Section: Single study set retrieval
@@ -274,14 +266,10 @@ export class StudySetService {
         where: { userId, studySetId },
       }));
 
-    if (isCollected) {
-      await this.ensureProgressRecords(userId, sorted.id);
-    }
-
-    return this.buildStudySetForUser(sorted, userId, true, isCollected);
+    return this.buildStudySetForUser(sorted, userId, isCollected);
   }
 
-  // Section: Mapping and progress helpers
+  // Section: Mapping helpers
 
   private withSortedFlashcards(studySet: StudySet): StudySet {
     if (studySet.flashcards?.length) {
@@ -293,7 +281,6 @@ export class StudySetService {
   private async buildStudySetForUser(
     studySetOrId: StudySet | string,
     userId: string,
-    includeFlashcards = false,
     alreadyCollected?: boolean,
   ): Promise<StudySetResponseDto> {
     const studySet =
@@ -315,31 +302,10 @@ export class StudySetService {
     const isCollected = alreadyCollected ?? isOwner;
     const flashcards = studySet.flashcards || [];
 
-    if (isCollected && flashcards.length) {
-      await this.ensureProgressRecords(userId, studySet.id);
-    }
-
-    const [progress, owner] = await Promise.all([
-      this.calculateProgressForUser(
-        userId,
-        studySet.id,
-        flashcards,
-        isCollected,
-      ),
-      this.userRepository.findOne({
-        where: { id: ownerUserId },
-        select: ['id', 'username', 'legacyName', 'profilePicture'],
-      }),
-    ]);
-
-    const flashcardsWithProgress = includeFlashcards
-      ? await this.attachFlashcardProgress(
-          userId,
-          studySet.id,
-          flashcards,
-          isCollected,
-        )
-      : undefined;
+    const owner = await this.userRepository.findOne({
+      where: { id: ownerUserId },
+      select: ['id', 'username', 'legacyName', 'profilePicture'],
+    });
 
     return plainToInstance(
       StudySetResponseDto,
@@ -355,127 +321,9 @@ export class StudySetService {
         isOwner,
         isCollected,
         flashcardsCount: flashcards.length,
-        progress,
-        flashcards: flashcardsWithProgress,
       },
       { excludeExtraneousValues: true },
     );
-  }
-
-  private async attachFlashcardProgress(
-    userId: string,
-    studySetId: string,
-    flashcards: Flashcard[],
-    isCollected: boolean,
-  ): Promise<FlashcardWithProgressDto[]> {
-    if (!flashcards.length) return [];
-
-    if (!isCollected) {
-      return flashcards.map((card) =>
-        plainToInstance(
-          FlashcardWithProgressDto,
-          {
-            id: card.id,
-            term: card.term,
-            definition: card.definition,
-            status: 'not_started',
-            isStarred: false,
-          },
-          { excludeExtraneousValues: true },
-        ),
-      );
-    }
-
-    const cardIds = flashcards.map((t) => t.id);
-    const progressRows = await this.flashcardUserStateRepository.find({
-      where: { userId, flashcardId: In(cardIds) },
-    });
-
-    const progressMap = new Map(progressRows.map((p) => [p.flashcardId, p]));
-
-    return flashcards.map((card) => {
-      const row = progressMap.get(card.id);
-      return plainToInstance(
-        FlashcardWithProgressDto,
-        {
-          id: card.id,
-          term: card.term,
-          definition: card.definition,
-          status: confidenceToStatus(row ?? null),
-          isStarred: row?.isStarred ?? false,
-        },
-        { excludeExtraneousValues: true },
-      );
-    });
-  }
-
-  private async calculateProgressForUser(
-    userId: string,
-    studySetId: string,
-    flashcards: Flashcard[],
-    isCollected: boolean,
-  ): Promise<{ not_started: number; in_progress: number; completed: number }> {
-    const defaultProgress = {
-      not_started: flashcards.length ? 1 : 0,
-      in_progress: 0,
-      completed: 0,
-    };
-
-    if (!isCollected || !flashcards.length) {
-      return defaultProgress;
-    }
-
-    const cardIds = flashcards.map((t) => t.id);
-    const progressRows = await this.flashcardUserStateRepository.find({
-      where: { userId, flashcardId: In(cardIds) },
-    });
-
-    if (!progressRows.length) {
-      return defaultProgress;
-    }
-
-    const counts = progressRows.reduce(
-      (acc, row) => {
-        acc[confidenceToStatus(row)]++;
-        return acc;
-      },
-      { not_started: 0, in_progress: 0, completed: 0 },
-    );
-
-    const total = flashcards.length;
-
-    return {
-      not_started: counts.not_started / total,
-      in_progress: counts.in_progress / total,
-      completed: counts.completed / total,
-    };
-  }
-
-  private async ensureProgressRecords(userId: string, studySetId: string) {
-    const cards = await this.flashcardRepository.find({
-      where: { studySetId },
-    });
-    if (!cards.length) return;
-
-    const cardIds = cards.map((t) => t.id);
-    const existing = await this.flashcardUserStateRepository.find({
-      where: { userId, flashcardId: In(cardIds) },
-    });
-
-    const existingMap = new Set(existing.map((e) => e.flashcardId));
-
-    const toCreate = cards
-      .filter((t) => !existingMap.has(t.id))
-      .map((card) =>
-        this.flashcardUserStateRepository.create({
-          userId,
-          flashcardId: card.id,
-        }),
-      );
-
-    if (toCreate.length) {
-      await this.flashcardUserStateRepository.save(toCreate);
-    }
   }
 
   private async ensureOwnedStudySet(userId: string, studySetId: string) {
@@ -514,7 +362,6 @@ export class StudySetService {
   private async buildStudySetsForUserBatch(
     studySets: StudySet[],
     userId: string,
-    includeFlashcards: boolean,
   ): Promise<StudySetResponseDto[]> {
     if (!studySets.length) return [];
 
@@ -537,33 +384,13 @@ export class StudySetService {
     const favoritedIds = new Set(favoriteLinks.map((f) => f.studySetId));
 
     return Promise.all(
-      studySets.map(async (studySet) => {
+      studySets.map((studySet) => {
         this.withSortedFlashcards(studySet);
         const ownerUserId = studySet.userId;
         const isOwner = ownerUserId === userId;
         const isCollected = isOwner || favoritedIds.has(studySet.id);
         const flashcards = studySet.flashcards || [];
         const owner = ownerMap.get(ownerUserId);
-
-        if (isCollected && flashcards.length) {
-          await this.ensureProgressRecords(userId, studySet.id);
-        }
-
-        const progress = await this.calculateProgressForUser(
-          userId,
-          studySet.id,
-          flashcards,
-          isCollected,
-        );
-
-        const flashcardsWithProgress = includeFlashcards
-          ? await this.attachFlashcardProgress(
-              userId,
-              studySet.id,
-              flashcards,
-              isCollected,
-            )
-          : undefined;
 
         return plainToInstance(
           StudySetResponseDto,
@@ -579,8 +406,6 @@ export class StudySetService {
             isOwner,
             isCollected,
             flashcardsCount: flashcards.length,
-            progress,
-            flashcards: flashcardsWithProgress,
           },
           { excludeExtraneousValues: true },
         );

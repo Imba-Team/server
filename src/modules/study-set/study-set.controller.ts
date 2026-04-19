@@ -92,7 +92,7 @@ export class StudySetController {
   @Get('me')
   @HttpCode(200)
   @ApiOperation({
-    summary: 'List study sets I created with progress info',
+    summary: 'List study sets I created',
   })
   async myStudySets(
     @CurrentUser() user: IUser,
@@ -171,7 +171,7 @@ export class StudySetController {
 
   @Get(':id')
   @HttpCode(200)
-  @ApiOperation({ summary: 'Get study set details with personal progress' })
+  @ApiOperation({ summary: 'Get study set details' })
   async getOne(
     @CurrentUser() user: IUser,
     @Param('id') id: string,
