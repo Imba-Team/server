@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { typeOrmConfigAsync } from './infrastructure/persistence/typeorm.config';
 import { UsersModule } from './modules/users/user.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { LoggerModule } from './common/logger/logger.module';
@@ -12,6 +10,7 @@ import { FavouriteStudySetModule } from './modules/favourite-study-set/favourite
 import { LibraryModule } from './modules/library/library.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { PrismaModule } from './common/prisma/prisma.module';
 
 @Module({
   imports: [
@@ -28,6 +27,7 @@ import { join } from 'path';
       ],
     }),
     LoggerModule,
+    PrismaModule,
     UsersModule,
     AuthModule,
     StudySetModule,
@@ -35,7 +35,6 @@ import { join } from 'path';
     FavouriteStudySetModule,
     LibraryModule,
     ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],
 })
 export class AppModule {}

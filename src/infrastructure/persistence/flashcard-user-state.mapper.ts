@@ -1,6 +1,9 @@
-import type { FlashcardUserState } from './entities/flashcard-user-state.entity';
+import type { FlashcardUserState } from '@prisma/client';
 
-export type FlashcardProgressStatus = 'not_started' | 'in_progress' | 'completed';
+export type FlashcardProgressStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'completed';
 
 export function confidenceToStatus(
   state: FlashcardUserState | null | undefined,

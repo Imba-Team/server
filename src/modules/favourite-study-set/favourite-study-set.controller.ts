@@ -12,10 +12,10 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator';
 import { IUser } from 'src/common/interfaces/user.interface';
 import { ResponseDto } from 'src/common/interfaces/response.dto';
 import { JwtGuard } from 'src/guards/jwt.guard';
+import { FavouriteStudySet } from '@prisma/client';
 
 import { CreateFavouriteStudySetDto } from './dto/create-favourite-study-set.dto';
 import { FavouriteStudySetService } from './favourite-study-set.service';
-import { FavouriteStudySet } from './favourite-study-set.entity';
 
 @ApiTags('Library')
 @ApiBearerAuth()

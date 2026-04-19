@@ -3,17 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { FlashcardUserState, StudySetVisibility } from '@prisma/client';
 import { LoggerService } from 'src/common/logger/logger.service';
-import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
-import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
-import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
-import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 import { UpdateFlashcardProgressDto } from './dtos/update-flashcard-progress.dto';
 import { plainToInstance } from 'class-transformer';
 import { FlashcardWithProgressDto } from './dtos/flashcard-with-progress.dto';
-import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
 import {
   confidenceToStatus,
   nextStatusAfterAnswer,
@@ -24,14 +19,7 @@ import {
 export class FlashcardProgressService {
   constructor(
     private readonly logger: LoggerService,
-    @InjectRepository(Flashcard)
-    private readonly flashcardRepository: Repository<Flashcard>,
-    @InjectRepository(StudySet)
-    private readonly studySetRepository: Repository<StudySet>,
-    @InjectRepository(FavoriteStudySet)
-    private readonly favoriteStudySetRepository: Repository<FavoriteStudySet>,
-    @InjectRepository(FlashcardUserState)
-    private readonly flashcardUserStateRepository: Repository<FlashcardUserState>,
+    private readonly prisma: PrismaService,
   ) {}
 
   async updateProgress(
@@ -39,14 +27,14 @@ export class FlashcardProgressService {
     flashcardId: string,
     dto: UpdateFlashcardProgressDto,
   ): Promise<FlashcardWithProgressDto> {
-    const flashcard = await this.flashcardRepository.findOne({
+    const flashcard = await this.prisma.flashcard.findUnique({
       where: { id: flashcardId },
     });
     if (!flashcard) {
       throw new NotFoundException('Flashcard not found');
     }
 
-    const studySet = await this.studySetRepository.findOne({
+    const studySet = await this.prisma.studySet.findUnique({
       where: { id: flashcard.studySetId },
     });
 
@@ -60,8 +48,10 @@ export class FlashcardProgressService {
     }
 
     if (!isOwner) {
-      const inCollection = await this.favoriteStudySetRepository.exist({
-        where: { userId, studySetId: studySet.id },
+      const inCollection = await this.prisma.favouriteStudySet.findUnique({
+        where: {
+          userId_studySetId: { userId, studySetId: studySet.id },
+        },
       });
 
       if (!inCollection) {
@@ -73,14 +63,16 @@ export class FlashcardProgressService {
       await this.ensureProgressRecords(userId, studySet.id);
     }
 
-    let state = await this.flashcardUserStateRepository.findOne({
-      where: { userId, flashcardId },
+    let state = await this.prisma.flashcardUserState.findUnique({
+      where: { userId_flashcardId: { userId, flashcardId } },
     });
 
     if (!state) {
-      state = this.flashcardUserStateRepository.create({
-        userId,
-        flashcardId,
+      state = await this.prisma.flashcardUserState.create({
+        data: {
+          userId,
+          flashcardId,
+        },
       });
     }
 
@@ -92,7 +84,13 @@ export class FlashcardProgressService {
       state.isStarred = dto.isStarred;
     }
 
-    const saved = await this.flashcardUserStateRepository.save(state);
+    const saved = await this.prisma.flashcardUserState.update({
+      where: { id: state.id },
+      data: {
+        confidenceLevel: state.confidenceLevel,
+        isStarred: state.isStarred,
+      },
+    });
 
     return plainToInstance(
       FlashcardWithProgressDto,
@@ -116,7 +114,7 @@ export class FlashcardProgressService {
       `Attempting to ${success ? 'upgrade' : 'decrease'} status of flashcard with ID: ${flashcardId}`,
     );
 
-    const flashcard = await this.flashcardRepository.findOne({
+    const flashcard = await this.prisma.flashcard.findUnique({
       where: { id: flashcardId },
     });
     if (!flashcard) {
@@ -126,7 +124,7 @@ export class FlashcardProgressService {
       throw new NotFoundException('Flashcard not found');
     }
 
-    const studySet = await this.studySetRepository.findOne({
+    const studySet = await this.prisma.studySet.findUnique({
       where: { id: flashcard.studySetId },
     });
 
@@ -144,8 +142,10 @@ export class FlashcardProgressService {
     }
 
     if (!isOwner) {
-      const inCollection = await this.favoriteStudySetRepository.exist({
-        where: { userId, studySetId: studySet.id },
+      const inCollection = await this.prisma.favouriteStudySet.findUnique({
+        where: {
+          userId_studySetId: { userId, studySetId: studySet.id },
+        },
       });
 
       if (!inCollection) {
@@ -160,14 +160,16 @@ export class FlashcardProgressService {
       await this.ensureProgressRecords(userId, studySet.id);
     }
 
-    let state = await this.flashcardUserStateRepository.findOne({
-      where: { userId, flashcardId },
+    let state = await this.prisma.flashcardUserState.findUnique({
+      where: { userId_flashcardId: { userId, flashcardId } },
     });
 
     if (!state) {
-      state = this.flashcardUserStateRepository.create({
-        userId,
-        flashcardId,
+      state = await this.prisma.flashcardUserState.create({
+        data: {
+          userId,
+          flashcardId,
+        },
       });
     }
 
@@ -176,7 +178,10 @@ export class FlashcardProgressService {
 
     if (newStatus !== currentStatus) {
       state.confidenceLevel = statusToConfidence(newStatus);
-      const saved = await this.flashcardUserStateRepository.save(state);
+      const saved = await this.prisma.flashcardUserState.update({
+        where: { id: state.id },
+        data: { confidenceLevel: state.confidenceLevel },
+      });
       this.logger.log(
         `Successfully ${success ? 'upgraded' : 'decreased'} status of flashcard with ID: ${flashcardId} to ${newStatus}`,
       );
@@ -210,14 +215,14 @@ export class FlashcardProgressService {
     userId: string,
     flashcardId: string,
   ): Promise<FlashcardWithProgressDto> {
-    const flashcard = await this.flashcardRepository.findOne({
+    const flashcard = await this.prisma.flashcard.findUnique({
       where: { id: flashcardId },
     });
     if (!flashcard) {
       throw new NotFoundException('Flashcard not found');
     }
 
-    const studySet = await this.studySetRepository.findOne({
+    const studySet = await this.prisma.studySet.findUnique({
       where: { id: flashcard.studySetId },
     });
 
@@ -230,14 +235,16 @@ export class FlashcardProgressService {
       throw new ForbiddenException('Study set is private');
     }
 
-    const progressRow = await this.flashcardUserStateRepository.findOne({
-      where: { userId, flashcardId },
+    const progressRow = await this.prisma.flashcardUserState.findUnique({
+      where: { userId_flashcardId: { userId, flashcardId } },
     });
 
     const isCollected =
       isOwner ||
-      (await this.favoriteStudySetRepository.exist({
-        where: { userId, studySetId: studySet.id },
+      !!(await this.prisma.favouriteStudySet.findUnique({
+        where: {
+          userId_studySetId: { userId, studySetId: studySet.id },
+        },
       }));
 
     if (isCollected && !progressRow) {
@@ -259,29 +266,27 @@ export class FlashcardProgressService {
   }
 
   private async ensureProgressRecords(userId: string, studySetId: string) {
-    const cards = await this.flashcardRepository.find({
+    const cards = await this.prisma.flashcard.findMany({
       where: { studySetId },
     });
     if (!cards.length) return;
 
     const cardIds = cards.map((t) => t.id);
-    const existing = await this.flashcardUserStateRepository.find({
-      where: { userId, flashcardId: In(cardIds) },
+    const existing = await this.prisma.flashcardUserState.findMany({
+      where: { userId, flashcardId: { in: cardIds } },
     });
 
     const existingMap = new Set(existing.map((e) => e.flashcardId));
 
     const toCreate = cards
       .filter((t) => !existingMap.has(t.id))
-      .map((card) =>
-        this.flashcardUserStateRepository.create({
-          userId,
-          flashcardId: card.id,
-        }),
-      );
+      .map((card) => ({
+        userId,
+        flashcardId: card.id,
+      }));
 
     if (toCreate.length) {
-      await this.flashcardUserStateRepository.save(toCreate);
+      await this.prisma.flashcardUserState.createMany({ data: toCreate });
     }
   }
 
@@ -289,9 +294,9 @@ export class FlashcardProgressService {
     userId: string,
     studySetId: string,
   ): Promise<boolean> {
-    const row = await this.studySetRepository.findOne({
+    const row = await this.prisma.studySet.findUnique({
       where: { id: studySetId },
-      select: ['userId'],
+      select: { userId: true },
     });
     return row?.userId === userId;
   }

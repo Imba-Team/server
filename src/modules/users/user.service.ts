@@ -5,9 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { EntityManager, Repository } from 'typeorm';
-import { User } from 'src/infrastructure/persistence/entities/user.entity';
+import { Prisma, User } from '@prisma/client';
 import { UpdateUserDto } from './dtos/update-user.dto';
 import * as bcrypt from 'bcrypt';
 import { LoggerService } from 'src/common/logger/logger.service';
@@ -15,19 +13,18 @@ import { CreateUserDto } from './dtos/create-user.dto';
 import { UserStatus } from 'src/common/interfaces/user.interface';
 import { slugify } from 'src/common/utils/sligify';
 import { Role } from 'src/common/decorators/roles.decorator';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
   constructor(
-    private readonly logger: LoggerService, // Assuming you have a logger service
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    private readonly entityManager: EntityManager,
+    private readonly logger: LoggerService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async create(userDto: CreateUserDto): Promise<User> {
-    return await this.entityManager.transaction(async (manager) => {
-      const existingUser = await manager.findOne(User, {
+    return await this.prisma.$transaction(async (tx) => {
+      const existingUser = await tx.user.findUnique({
         where: { email: userDto.email },
       });
 
@@ -36,27 +33,25 @@ export class UsersService {
       }
 
       const username = await this.allocateUsername(
-        manager,
         userDto.name || userDto.email,
       );
-
       const hashed = userDto.password
         ? await bcrypt.hash(userDto.password, 10)
         : userDto.password;
 
-      const newUser = manager.create(User, {
-        email: userDto.email,
-        username,
-        password: hashed,
-        status: userDto.status ?? 'active',
-        role: userDto.role ?? Role.USER,
+      return tx.user.create({
+        data: {
+          email: userDto.email,
+          username,
+          password: hashed,
+          status: userDto.status ?? 'active',
+          role: userDto.role ?? Role.USER,
+        },
       });
-      return manager.save(User, newUser);
     });
   }
 
   private async allocateUsername(
-    manager: EntityManager,
     baseInput: string,
     excludeUserId?: string,
   ): Promise<string> {
@@ -67,7 +62,7 @@ export class UsersService {
       ) || 'user';
     let candidate = base;
     for (let i = 0; i < 10_000; i++) {
-      const existing = await manager.findOne(User, {
+      const existing = await this.prisma.user.findUnique({
         where: { username: candidate },
       });
       if (!existing || existing.id === excludeUserId) {
@@ -83,18 +78,13 @@ export class UsersService {
     if (user.username != null && user.username !== '') {
       return user;
     }
-    const username = await this.allocateUsername(
-      this.entityManager,
-      user.legacyName || user.email,
-      user.id,
-    );
-    await this.userRepository.update(user.id, {
-      username,
-      legacyName: null,
+    const username = await this.allocateUsername(user.email, user.id);
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        username,
+      },
     });
-    user.username = username;
-    user.legacyName = null;
-    return user;
   }
 
   async findAll(
@@ -102,15 +92,19 @@ export class UsersService {
     limit: number = 10,
     filter?: { status?: UserStatus },
   ) {
-    const query = this.userRepository.createQueryBuilder('user');
+    const where: Prisma.UserWhereInput = filter?.status
+      ? { status: filter.status }
+      : {};
 
-    if (filter?.status) {
-      query.andWhere('user.status = :status', { status: filter.status });
-    }
-
-    query.skip((page - 1) * limit).take(limit);
-
-    const [users, total] = await query.getManyAndCount();
+    const [users, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
 
     return {
       data: users,
@@ -122,11 +116,9 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    const user = await this.userRepository
-      .createQueryBuilder('user')
-      .addSelect('user.password')
-      .where('user.email = :email', { email })
-      .getOne();
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
     if (!user) {
       return null;
     }
@@ -134,11 +126,9 @@ export class UsersService {
   }
 
   async findById(id: string) {
-    const user = await this.userRepository
-      .createQueryBuilder('user')
-      .addSelect('user.password')
-      .where('user.id = :id', { id })
-      .getOne();
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+    });
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -147,29 +137,34 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
-    const user = await this.findById(id);
-    if (updateUserDto.email !== undefined) user.email = updateUserDto.email;
+    const existing = await this.findById(id);
+    const patch: Prisma.UserUpdateInput = {};
+
+    if (updateUserDto.email !== undefined) patch.email = updateUserDto.email;
     if (updateUserDto.name !== undefined) {
-      user.username = await this.allocateUsername(
-        this.entityManager,
-        updateUserDto.name,
-        id,
-      );
+      patch.username = await this.allocateUsername(updateUserDto.name, id);
     }
-    if (updateUserDto.status !== undefined) user.status = updateUserDto.status;
-    if (updateUserDto.role !== undefined) user.role = updateUserDto.role;
+    if (updateUserDto.status !== undefined) patch.status = updateUserDto.status;
+    if (updateUserDto.role !== undefined) {
+      patch.role = updateUserDto.role;
+    }
     if (updateUserDto.profilePicture !== undefined) {
-      user.profilePicture = updateUserDto.profilePicture;
+      patch.profilePicture = updateUserDto.profilePicture;
     }
-    return this.userRepository.save(user);
+
+    if (Object.keys(patch).length === 0) {
+      return existing;
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: patch,
+    });
   }
 
   async delete(id: string) {
-    const user = await this.findById(id);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    return await this.userRepository.remove(user);
+    await this.findById(id);
+    return this.prisma.user.delete({ where: { id } });
   }
 
   async updatePassword(id: string, newPassword: string): Promise<User> {
@@ -180,8 +175,10 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    user.password = hashedPassword; // Assume password is already hashed
-    return await this.userRepository.save(user);
+    return this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
   }
 
   async changePassword(
@@ -226,12 +223,15 @@ export class UsersService {
       });
     }
 
-    user.password = await bcrypt.hash(newPassword, 10);
-    // return await this.userRepository.save(user);
+    const hashed = await bcrypt.hash(newPassword, 10);
+    const saved = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashed },
+    });
     return {
       ok: true,
       message: 'Password updated successfully',
-      data: await this.userRepository.save(user),
+      data: saved,
     };
   }
 }

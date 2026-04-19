@@ -8,18 +8,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { Prisma, StudySet, StudySetVisibility } from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
-import { In, Repository } from 'typeorm';
 
 // Entities and enums
 import { LoggerService } from 'src/common/logger/logger.service';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 import { slugify } from 'src/common/utils/sligify';
-import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
-import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
-import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
-import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
-import { User } from 'src/infrastructure/persistence/entities/user.entity';
 import { UsersService } from 'src/modules/users/user.service';
 
 // DTOs
@@ -29,18 +24,19 @@ import { StudySetResponseDto } from './dtos/study-set-response.dto';
 import { UpdateStudySetDto } from './dtos/update-study-set.dto';
 import { UpdateVisibilityDto } from './dtos/update-visibility.dto';
 
+type FlashcardLite = { orderIndex: number };
+type StudySetWithFlashcards = StudySet & { flashcards?: FlashcardLite[] };
+type OwnerProjection = {
+  id: string;
+  username: string | null;
+  profilePicture: string | null;
+};
+
 @Injectable()
 export class StudySetService {
   constructor(
     private readonly logger: LoggerService,
-    @InjectRepository(StudySet)
-    private readonly studySetRepository: Repository<StudySet>,
-    @InjectRepository(FavoriteStudySet)
-    private readonly favoriteStudySetRepository: Repository<FavoriteStudySet>,
-    @InjectRepository(Flashcard)
-    private readonly flashcardRepository: Repository<Flashcard>,
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
+    private readonly prisma: PrismaService,
     private readonly usersService: UsersService,
   ) {
     this.logger.setContext(StudySetService.name);
@@ -55,8 +51,10 @@ export class StudySetService {
     await this.usersService.findById(userId);
 
     const slug = slugify(dto.title);
-    const duplicate = await this.studySetRepository.findOne({
-      where: [{ slug }, { title: dto.title }],
+    const duplicate = await this.prisma.studySet.findFirst({
+      where: {
+        OR: [{ slug }, { title: dto.title }],
+      },
     });
 
     // If a duplicate exists, determine if it's a slug or title conflict for better logging and error messages
@@ -73,8 +71,8 @@ export class StudySetService {
       throw new ConflictException('Study set title already exists');
     }
 
-    const saved = await this.studySetRepository.save(
-      this.studySetRepository.create({
+    const saved = await this.prisma.studySet.create({
+      data: {
         slug,
         title: dto.title,
         description: dto.description,
@@ -84,8 +82,8 @@ export class StudySetService {
             ? StudySetVisibility.PRIVATE
             : StudySetVisibility.PUBLIC,
         userId,
-      }),
-    );
+      },
+    });
 
     this.logger.log(`Study set created: id=${saved.id}, userId=${userId}`);
 
@@ -95,7 +93,7 @@ export class StudySetService {
   async update(userId: string, studySetId: string, dto: UpdateStudySetDto) {
     this.logger.debug(`Updating study set: id=${studySetId}, userId=${userId}`);
     await this.ensureOwnedStudySet(userId, studySetId);
-    const patch: Partial<StudySet> = {};
+    const patch: Prisma.StudySetUpdateInput = {};
     if (dto.title !== undefined) patch.title = dto.title;
     if (dto.description !== undefined) patch.description = dto.description;
     if (dto.language !== undefined) patch.language = dto.language;
@@ -105,7 +103,10 @@ export class StudySetService {
         : StudySetVisibility.PUBLIC;
     }
     if (Object.keys(patch).length) {
-      await this.studySetRepository.update(studySetId, patch);
+      await this.prisma.studySet.update({
+        where: { id: studySetId },
+        data: patch,
+      });
       this.logger.log(`Study set updated: id=${studySetId}, userId=${userId}`);
     }
     return this.buildStudySetForUser(studySetId, userId);
@@ -120,10 +121,13 @@ export class StudySetService {
       `Updating study set visibility: id=${studySetId}, userId=${userId}`,
     );
     await this.ensureOwnedStudySet(userId, studySetId);
-    await this.studySetRepository.update(studySetId, {
-      visibility: visibilityDto.isPrivate
-        ? StudySetVisibility.PRIVATE
-        : StudySetVisibility.PUBLIC,
+    await this.prisma.studySet.update({
+      where: { id: studySetId },
+      data: {
+        visibility: visibilityDto.isPrivate
+          ? StudySetVisibility.PRIVATE
+          : StudySetVisibility.PUBLIC,
+      },
     });
     this.logger.log(
       `Study set visibility updated: id=${studySetId}, private=${visibilityDto.isPrivate}`,
@@ -136,9 +140,9 @@ export class StudySetService {
 
   async findCreatedStudySets(userId: string) {
     this.logger.debug(`Listing created study sets for user: ${userId}`);
-    const sets = await this.studySetRepository.find({
+    const sets = await this.prisma.studySet.findMany({
       where: { userId },
-      relations: ['flashcards'],
+      include: { flashcards: true },
     });
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
     return this.buildStudySetsForUserBatch(sorted, userId);
@@ -146,16 +150,16 @@ export class StudySetService {
 
   async findCollection(userId: string) {
     this.logger.debug(`Listing collection study sets for user: ${userId}`);
-    const owned = await this.studySetRepository.find({
+    const owned = await this.prisma.studySet.findMany({
       where: { userId },
-      relations: ['flashcards'],
+      include: { flashcards: true },
     });
-    const favLinks = await this.favoriteStudySetRepository.find({
+    const favLinks = await this.prisma.favouriteStudySet.findMany({
       where: { userId },
-      relations: ['studySet', 'studySet.flashcards'],
+      include: { studySet: { include: { flashcards: true } } },
     });
 
-    const byId = new Map<string, StudySet>();
+    const byId = new Map<string, StudySetWithFlashcards>();
     for (const s of owned) {
       byId.set(s.id, this.withSortedFlashcards(s));
     }
@@ -172,22 +176,25 @@ export class StudySetService {
     this.logger.debug(
       `Searching public study sets for user: ${userId}, query="${query.q ?? ''}"`,
     );
-    const qb = this.studySetRepository
-      .createQueryBuilder('s')
-      .leftJoinAndSelect('s.flashcards', 'f')
-      .where('s.visibility = :vis', { vis: StudySetVisibility.PUBLIC })
-      .orderBy('f.orderIndex', 'ASC');
+    const where: Prisma.StudySetWhereInput = {
+      visibility: StudySetVisibility.PUBLIC,
+      ...(query.q
+        ? {
+            OR: [
+              { title: { contains: query.q, mode: 'insensitive' } },
+              { description: { contains: query.q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
 
-    if (query.q) {
-      qb.andWhere(
-        '(LOWER(s.title) LIKE LOWER(:search) OR LOWER(s.description) LIKE LOWER(:search))',
-        {
-          search: `%${query.q}%`,
-        },
-      );
-    }
+    const sets = await this.prisma.studySet.findMany({
+      where,
+      include: {
+        flashcards: { orderBy: { orderIndex: 'asc' } },
+      },
+    });
 
-    const sets = await qb.getMany();
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
     return this.buildStudySetsForUserBatch(sorted, userId);
   }
@@ -202,13 +209,15 @@ export class StudySetService {
     this.assertAccessible(studySet, userId);
 
     if (studySet.userId !== userId) {
-      const exists = await this.favoriteStudySetRepository.exist({
-        where: { userId, studySetId },
+      const exists = await this.prisma.favouriteStudySet.findUnique({
+        where: {
+          userId_studySetId: { userId, studySetId },
+        },
       });
       if (!exists) {
-        await this.favoriteStudySetRepository.save(
-          this.favoriteStudySetRepository.create({ userId, studySetId }),
-        );
+        await this.prisma.favouriteStudySet.create({
+          data: { userId, studySetId },
+        });
         this.logger.log(
           `Study set collected: studySetId=${studySetId}, userId=${userId}`,
         );
@@ -233,7 +242,9 @@ export class StudySetService {
       );
     }
 
-    await this.favoriteStudySetRepository.delete({ userId, studySetId });
+    await this.prisma.favouriteStudySet.deleteMany({
+      where: { userId, studySetId },
+    });
     this.logger.log(
       `Study set uncollected: studySetId=${studySetId}, userId=${userId}`,
     );
@@ -247,9 +258,9 @@ export class StudySetService {
     this.logger.debug(
       `Getting study set by id: studySetId=${studySetId}, userId=${userId}`,
     );
-    const studySet = await this.studySetRepository.findOne({
+    const studySet = await this.prisma.studySet.findUnique({
       where: { id: studySetId },
-      relations: ['flashcards'],
+      include: { flashcards: true },
     });
 
     if (!studySet) {
@@ -262,8 +273,10 @@ export class StudySetService {
     const isOwner = sorted.userId === userId;
     const isCollected =
       isOwner ||
-      (await this.favoriteStudySetRepository.exist({
-        where: { userId, studySetId },
+      !!(await this.prisma.favouriteStudySet.findUnique({
+        where: {
+          userId_studySetId: { userId, studySetId },
+        },
       }));
 
     return this.buildStudySetForUser(sorted, userId, isCollected);
@@ -275,7 +288,9 @@ export class StudySetService {
 
   // Section: Mapping helpers
 
-  private withSortedFlashcards(studySet: StudySet): StudySet {
+  private withSortedFlashcards(
+    studySet: StudySetWithFlashcards,
+  ): StudySetWithFlashcards {
     if (studySet.flashcards?.length) {
       studySet.flashcards.sort((a, b) => a.orderIndex - b.orderIndex);
     }
@@ -283,15 +298,15 @@ export class StudySetService {
   }
 
   private async buildStudySetForUser(
-    studySetOrId: StudySet | string,
+    studySetOrId: StudySetWithFlashcards | string,
     userId: string,
     alreadyCollected?: boolean,
   ): Promise<StudySetResponseDto> {
     const studySet =
       typeof studySetOrId === 'string'
-        ? await this.studySetRepository.findOne({
+        ? await this.prisma.studySet.findUnique({
             where: { id: studySetOrId },
-            relations: ['flashcards'],
+            include: { flashcards: true },
           })
         : studySetOrId;
 
@@ -303,12 +318,23 @@ export class StudySetService {
 
     const ownerUserId = studySet.userId;
     const isOwner = ownerUserId === userId;
-    const isCollected = alreadyCollected ?? isOwner;
+    const isCollected =
+      alreadyCollected ??
+      (isOwner ||
+        !!(await this.prisma.favouriteStudySet.findUnique({
+          where: {
+            userId_studySetId: { userId, studySetId: studySet.id },
+          },
+        })));
     const flashcards = studySet.flashcards || [];
 
-    const owner = await this.userRepository.findOne({
+    const owner = await this.prisma.user.findUnique({
       where: { id: ownerUserId },
-      select: ['id', 'username', 'legacyName', 'profilePicture'],
+      select: {
+        id: true,
+        username: true,
+        profilePicture: true,
+      },
     });
 
     return plainToInstance(
@@ -320,7 +346,7 @@ export class StudySetService {
         description: studySet.description ?? '',
         isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
         userId: ownerUserId,
-        ownerName: owner?.username ?? owner?.legacyName ?? undefined,
+        ownerName: owner?.username ?? undefined,
         ownerImg: owner?.profilePicture,
         isOwner,
         isCollected,
@@ -351,7 +377,7 @@ export class StudySetService {
   }
 
   private async findStudySetOrFail(studySetId: string): Promise<StudySet> {
-    const studySet = await this.studySetRepository.findOne({
+    const studySet = await this.prisma.studySet.findUnique({
       where: { id: studySetId },
     });
     if (!studySet) {
@@ -364,7 +390,7 @@ export class StudySetService {
   // Section: Batch response builders
 
   private async buildStudySetsForUserBatch(
-    studySets: StudySet[],
+    studySets: StudySetWithFlashcards[],
     userId: string,
   ): Promise<StudySetResponseDto[]> {
     if (!studySets.length) return [];
@@ -374,13 +400,17 @@ export class StudySetService {
 
     const [ownerUsers, favoriteLinks] = await Promise.all([
       ownerIds.length
-        ? this.userRepository.find({
-            where: { id: In(ownerIds) },
-            select: ['id', 'username', 'legacyName', 'profilePicture'],
+        ? this.prisma.user.findMany({
+            where: { id: { in: ownerIds } },
+            select: {
+              id: true,
+              username: true,
+              profilePicture: true,
+            },
           })
-        : Promise.resolve([] as User[]),
-      this.favoriteStudySetRepository.find({
-        where: { userId, studySetId: In(studySetIds) },
+        : Promise.resolve([] as OwnerProjection[]),
+      this.prisma.favouriteStudySet.findMany({
+        where: { userId, studySetId: { in: studySetIds } },
       }),
     ]);
 
@@ -405,7 +435,7 @@ export class StudySetService {
             description: studySet.description ?? '',
             isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
             userId: ownerUserId,
-            ownerName: owner?.username ?? owner?.legacyName ?? undefined,
+            ownerName: owner?.username ?? undefined,
             ownerImg: owner?.profilePicture,
             isOwner,
             isCollected,

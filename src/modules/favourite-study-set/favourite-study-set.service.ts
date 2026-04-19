@@ -4,22 +4,18 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { StudySetVisibility } from '@prisma/client';
 
 import { LoggerService } from 'src/common/logger/logger.service';
-import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 import { StudySetService } from 'src/modules/study-set/study-set.service';
-
-import { FavouriteStudySet } from './favourite-study-set.entity';
 
 @Injectable()
 export class FavouriteStudySetService {
   constructor(
     private readonly logger: LoggerService,
     private readonly studySetService: StudySetService,
-    @InjectRepository(FavouriteStudySet)
-    private readonly favouriteStudySetRepository: Repository<FavouriteStudySet>,
+    private readonly prisma: PrismaService,
   ) {
     this.logger.setContext(FavouriteStudySetService.name);
   }
@@ -37,10 +33,12 @@ export class FavouriteStudySetService {
       throw new ForbiddenException('Only public study sets can be saved');
     }
 
-    const existing = await this.favouriteStudySetRepository.findOne({
+    const existing = await this.prisma.favouriteStudySet.findUnique({
       where: {
-        userId: currentUserId,
-        studySetId,
+        userId_studySetId: {
+          userId: currentUserId,
+          studySetId,
+        },
       },
     });
 
@@ -48,12 +46,12 @@ export class FavouriteStudySetService {
       throw new ConflictException('Study set is already saved in your library');
     }
 
-    const created = this.favouriteStudySetRepository.create({
-      userId: currentUserId,
-      studySetId,
+    return this.prisma.favouriteStudySet.create({
+      data: {
+        userId: currentUserId,
+        studySetId,
+      },
     });
-
-    return this.favouriteStudySetRepository.save(created);
   }
 
   async removeFromLibrary(
@@ -68,9 +66,11 @@ export class FavouriteStudySetService {
       );
     }
 
-    await this.favouriteStudySetRepository.delete({
-      userId: currentUserId,
-      studySetId,
+    await this.prisma.favouriteStudySet.deleteMany({
+      where: {
+        userId: currentUserId,
+        studySetId,
+      },
     });
   }
 }

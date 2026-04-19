@@ -1,22 +1,31 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
 import { plainToInstance } from 'class-transformer';
-import { Repository } from 'typeorm';
+import { Prisma } from '@prisma/client';
 
 import { LoggerService } from 'src/common/logger/logger.service';
-import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
-import { FavouriteStudySet } from 'src/modules/favourite-study-set/favourite-study-set.entity';
+import { PrismaService } from 'src/common/prisma/prisma.service';
 
 import { LibraryItemDto } from './dto/library-item.dto';
+
+type LibraryRawRow = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  visibility: string;
+  language: string | null;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  isOwner: boolean;
+  isFavourited: boolean;
+};
 
 @Injectable()
 export class LibraryService {
   constructor(
     private readonly logger: LoggerService,
-    @InjectRepository(StudySet)
-    private readonly studySetRepository: Repository<StudySet>,
-    @InjectRepository(FavouriteStudySet)
-    private readonly favouriteStudySetRepository: Repository<FavouriteStudySet>,
+    private readonly prisma: PrismaService,
   ) {
     this.logger.setContext(LibraryService.name);
   }
@@ -24,30 +33,35 @@ export class LibraryService {
   async getLibrary(currentUserId: string): Promise<LibraryItemDto[]> {
     this.logger.debug(`Loading library for user: ${currentUserId}`);
 
-    const queryBuilder = this.studySetRepository
-      .createQueryBuilder('s')
-      .leftJoin(
-        FavouriteStudySet,
-        'f',
-        'f.studySetId = s.id AND f.userId = :currentUserId',
-        { currentUserId },
-      )
-      .addSelect('s.userId = :currentUserId', 'isOwner')
-      .addSelect('f.id IS NOT NULL', 'isFavourited')
-      .where('s.userId = :currentUserId OR f.userId = :currentUserId', {
-        currentUserId,
-      })
-      .orderBy('s.createdAt', 'DESC');
+    const rows = await this.prisma.$queryRaw<LibraryRawRow[]>(Prisma.sql`
+      SELECT
+        s."id",
+        s."slug",
+        s."title",
+        s."description",
+        s."visibility",
+        s."language",
+        s."userId",
+        s."createdAt",
+        s."updatedAt",
+        (s."userId" = ${currentUserId}) AS "isOwner",
+        (f."id" IS NOT NULL) AS "isFavourited"
+      FROM "study_set" s
+      LEFT JOIN "favorite_study_set" f
+        ON f."studySetId" = s."id"
+       AND f."userId" = ${currentUserId}
+      WHERE s."userId" = ${currentUserId}
+         OR f."userId" = ${currentUserId}
+      ORDER BY s."createdAt" DESC
+    `);
 
-    const { entities, raw } = await queryBuilder.getRawAndEntities();
-
-    return entities.map((studySet, index) =>
+    return rows.map((row) =>
       plainToInstance(
         LibraryItemDto,
         {
-          ...studySet,
-          isOwner: this.toBoolean(raw[index]?.isOwner),
-          isFavourited: this.toBoolean(raw[index]?.isFavourited),
+          ...row,
+          isOwner: this.toBoolean(row.isOwner),
+          isFavourited: this.toBoolean(row.isFavourited),
         },
         { excludeExtraneousValues: true },
       ),

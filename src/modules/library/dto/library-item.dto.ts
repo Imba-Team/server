@@ -1,7 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
-
-import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
+import { StudySetVisibility } from '@prisma/client';
 
 export class LibraryItemDto {
   @ApiProperty()
