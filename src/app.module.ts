@@ -8,6 +8,8 @@ import { LoggerModule } from './common/logger/logger.module';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { StudySetModule } from './modules/study-set/study-set.module';
 import { FlashcardModule } from './modules/flashcard/flashcard-progress.module';
+import { FavouriteStudySetModule } from './modules/favourite-study-set/favourite-study-set.module';
+import { LibraryModule } from './modules/library/library.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 
@@ -30,6 +32,8 @@ import { join } from 'path';
     AuthModule,
     StudySetModule,
     FlashcardModule,
+    FavouriteStudySetModule,
+    LibraryModule,
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync(typeOrmConfigAsync),
   ],

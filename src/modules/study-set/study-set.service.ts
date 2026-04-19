@@ -269,6 +269,10 @@ export class StudySetService {
     return this.buildStudySetForUser(sorted, userId, isCollected);
   }
 
+  async findByIdOrFail(studySetId: string): Promise<StudySet> {
+    return this.findStudySetOrFail(studySetId);
+  }
+
   // Section: Mapping helpers
 
   private withSortedFlashcards(studySet: StudySet): StudySet {

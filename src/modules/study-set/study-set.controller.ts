@@ -16,19 +16,21 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
+import { plainToInstance } from 'class-transformer';
+
+import { StudySetService } from './study-set.service';
+import { ResponseDto } from 'src/common/interfaces/response.dto';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import { Roles, Role } from 'src/common/decorators/roles.decorator';
+import { IUser } from 'src/common/interfaces/user.interface';
 import { JwtGuard } from 'src/guards/jwt.guard';
 import { RolesGuard } from 'src/guards/roles.guard';
-import { CurrentUser } from 'src/common/decorators/current-user.decorator';
-import { IUser } from 'src/common/interfaces/user.interface';
-import { Roles, Role } from 'src/common/decorators/roles.decorator';
-import { ResponseDto } from 'src/common/interfaces/response.dto';
-import { StudySetService } from './study-set.service';
+
 import { CreateStudySetDto } from './dtos/create-study-set.dto';
 import { UpdateStudySetDto } from './dtos/update-study-set.dto';
 import { UpdateVisibilityDto } from './dtos/update-visibility.dto';
 import { SearchStudySetsDto } from './dtos/search-study-sets.dto';
 import { StudySetResponseDto } from './dtos/study-set-response.dto';
-import { plainToInstance } from 'class-transformer';
 
 @ApiTags('Study Sets')
 @ApiBearerAuth()
