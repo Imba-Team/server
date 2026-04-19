@@ -1,24 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose } from 'class-transformer';
 
-export class TermWithProgressDto {
+export class FlashcardWithProgressDto {
   @ApiProperty()
   @Expose()
-  id: string;
+  id!: string;
 
   @ApiProperty()
   @Expose()
-  term: string;
+  term!: string;
 
   @ApiProperty()
   @Expose()
-  definition: string;
+  definition!: string;
 
   @ApiProperty({ enum: ['not_started', 'in_progress', 'completed'] })
   @Expose()
-  status: 'not_started' | 'in_progress' | 'completed';
+  status!: 'not_started' | 'in_progress' | 'completed';
 
   @ApiProperty({ example: false })
   @Expose()
-  isStarred: boolean;
+  isStarred!: boolean;
 }

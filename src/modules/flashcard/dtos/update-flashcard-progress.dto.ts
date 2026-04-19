@@ -1,12 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsEnum, IsOptional } from 'class-validator';
-import type { TermProgressStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
+import type { FlashcardProgressStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 
-export class UpdateTermProgressDto {
+export class UpdateFlashcardProgressDto {
   @ApiPropertyOptional({ enum: ['not_started', 'in_progress', 'completed'] })
   @IsEnum(['not_started', 'in_progress', 'completed'])
   @IsOptional()
-  status?: TermProgressStatus;
+  status?: FlashcardProgressStatus;
 
   @ApiPropertyOptional({ example: true })
   @IsBoolean()

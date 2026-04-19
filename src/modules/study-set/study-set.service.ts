@@ -1,3 +1,7 @@
+/**
+ * Handles study set CRUD, collection membership, and user progress shaping.
+ */
+
 import {
   ConflictException,
   ForbiddenException,
@@ -5,27 +9,31 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { plainToInstance } from 'class-transformer';
 import { In, Repository } from 'typeorm';
+
+// Entities and enums
 import { LoggerService } from 'src/common/logger/logger.service';
-import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
-import { User } from 'src/infrastructure/persistence/entities/user.entity';
-import { UsersService } from 'src/modules/users/user.service';
-import { CreateModuleDto } from './dtos/create-module.dto';
-import { UpdateModuleDto } from './dtos/update-module.dto';
-import { UpdateVisibilityDto } from './dtos/update-visibility.dto';
 import { slugify } from 'src/common/utils/sligify';
+import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
+import { confidenceToStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
 import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
 import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
-import { SearchModulesDto } from './dtos/search-modules.dto';
-import { plainToInstance } from 'class-transformer';
-import { ModuleResponseDto } from './dtos/module-response.dto';
-import { TermWithProgressDto } from 'src/modules/term/dtos/term-with-progress.dto';
-import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
-import { confidenceToStatus } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
+import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
+import { User } from 'src/infrastructure/persistence/entities/user.entity';
+import { FlashcardWithProgressDto } from 'src/modules/flashcard/dtos/flashcard-with-progress.dto';
+import { UsersService } from 'src/modules/users/user.service';
+
+// DTOs
+import { CreateStudySetDto } from './dtos/create-study-set.dto';
+import { SearchStudySetsDto } from './dtos/search-study-sets.dto';
+import { StudySetResponseDto } from './dtos/study-set-response.dto';
+import { UpdateStudySetDto } from './dtos/update-study-set.dto';
+import { UpdateVisibilityDto } from './dtos/update-visibility.dto';
 
 @Injectable()
-export class ModuleService {
+export class StudySetService {
   constructor(
     private readonly logger: LoggerService,
     @InjectRepository(StudySet)
@@ -39,29 +47,43 @@ export class ModuleService {
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     private readonly usersService: UsersService,
-  ) {}
+  ) {
+    this.logger.setContext(StudySetService.name);
+  }
 
-  async create(userId: string, dto: CreateModuleDto) {
+  // Section: Study set lifecycle operations
+
+  async create(userId: string, dto: CreateStudySetDto) {
+    this.logger.debug(`Creating study set for user: ${userId}`);
+
+    //Check the user existence
     await this.usersService.findById(userId);
 
     const slug = slugify(dto.title);
-
     const duplicate = await this.studySetRepository.findOne({
       where: [{ slug }, { title: dto.title }],
     });
 
+    // If a duplicate exists, determine if it's a slug or title conflict for better logging and error messages
     if (duplicate) {
       if (duplicate.slug === slug) {
-        throw new ConflictException('Module slug already exists');
+        this.logger.warn(
+          `Duplicate study set slug attempt: slug=${slug}, userId=${userId}`,
+        );
+        throw new ConflictException('Study set slug already exists');
       }
-      throw new ConflictException('Module title already exists');
+      this.logger.warn(
+        `Duplicate study set title attempt: title="${dto.title}", userId=${userId}`,
+      );
+      throw new ConflictException('Study set title already exists');
     }
 
     const saved = await this.studySetRepository.save(
       this.studySetRepository.create({
         slug,
         title: dto.title,
-        description: dto.description ?? null,
+        description: dto.description,
+        language: dto.language,
         visibility:
           dto.isPrivate === true
             ? StudySetVisibility.PRIVATE
@@ -71,15 +93,18 @@ export class ModuleService {
     );
 
     await this.ensureProgressRecords(userId, saved.id);
+    this.logger.log(`Study set created: id=${saved.id}, userId=${userId}`);
 
-    return this.buildModuleForUser(saved.id, userId, true, true);
+    return this.buildStudySetForUser(saved.id, userId, true, true);
   }
 
-  async update(userId: string, studySetId: string, dto: UpdateModuleDto) {
+  async update(userId: string, studySetId: string, dto: UpdateStudySetDto) {
+    this.logger.debug(`Updating study set: id=${studySetId}, userId=${userId}`);
     await this.ensureOwnedStudySet(userId, studySetId);
     const patch: Partial<StudySet> = {};
     if (dto.title !== undefined) patch.title = dto.title;
     if (dto.description !== undefined) patch.description = dto.description;
+    if (dto.language !== undefined) patch.language = dto.language;
     if (dto.isPrivate !== undefined) {
       patch.visibility = dto.isPrivate
         ? StudySetVisibility.PRIVATE
@@ -87,8 +112,9 @@ export class ModuleService {
     }
     if (Object.keys(patch).length) {
       await this.studySetRepository.update(studySetId, patch);
+      this.logger.log(`Study set updated: id=${studySetId}, userId=${userId}`);
     }
-    return this.buildModuleForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId, true);
   }
 
   async updateVisibility(
@@ -96,26 +122,36 @@ export class ModuleService {
     studySetId: string,
     visibilityDto: UpdateVisibilityDto,
   ) {
+    this.logger.debug(
+      `Updating study set visibility: id=${studySetId}, userId=${userId}`,
+    );
     await this.ensureOwnedStudySet(userId, studySetId);
     await this.studySetRepository.update(studySetId, {
       visibility: visibilityDto.isPrivate
         ? StudySetVisibility.PRIVATE
         : StudySetVisibility.PUBLIC,
     });
+    this.logger.log(
+      `Study set visibility updated: id=${studySetId}, private=${visibilityDto.isPrivate}`,
+    );
 
-    return this.buildModuleForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId, true);
   }
 
-  async findCreatedModules(userId: string) {
+  // Section: Study set listing and discovery
+
+  async findCreatedStudySets(userId: string) {
+    this.logger.debug(`Listing created study sets for user: ${userId}`);
     const sets = await this.studySetRepository.find({
       where: { userId },
       relations: ['flashcards'],
     });
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
-    return this.buildModulesForUserBatch(sorted, userId, false);
+    return this.buildStudySetsForUserBatch(sorted, userId, false);
   }
 
   async findCollection(userId: string) {
+    this.logger.debug(`Listing collection study sets for user: ${userId}`);
     const owned = await this.studySetRepository.find({
       where: { userId },
       relations: ['flashcards'],
@@ -135,10 +171,13 @@ export class ModuleService {
       }
     }
 
-    return this.buildModulesForUserBatch([...byId.values()], userId, false);
+    return this.buildStudySetsForUserBatch([...byId.values()], userId, false);
   }
 
-  async searchPublic(userId: string, query: SearchModulesDto) {
+  async searchPublic(userId: string, query: SearchStudySetsDto) {
+    this.logger.debug(
+      `Searching public study sets for user: ${userId}, query="${query.q ?? ''}"`,
+    );
     const qb = this.studySetRepository
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.flashcards', 'f')
@@ -156,10 +195,15 @@ export class ModuleService {
 
     const sets = await qb.getMany();
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
-    return this.buildModulesForUserBatch(sorted, userId, false);
+    return this.buildStudySetsForUserBatch(sorted, userId, false);
   }
 
+  // Section: Collection membership operations
+
   async addToCollection(userId: string, studySetId: string) {
+    this.logger.debug(
+      `Adding study set to collection: studySetId=${studySetId}, userId=${userId}`,
+    );
     const studySet = await this.findStudySetOrFail(studySetId);
     this.assertAccessible(studySet, userId);
 
@@ -171,36 +215,53 @@ export class ModuleService {
         await this.favoriteStudySetRepository.save(
           this.favoriteStudySetRepository.create({ userId, studySetId }),
         );
+        this.logger.log(
+          `Study set collected: studySetId=${studySetId}, userId=${userId}`,
+        );
       }
     }
     await this.ensureProgressRecords(userId, studySetId);
 
-    return this.buildModuleForUser(studySetId, userId, true);
+    return this.buildStudySetForUser(studySetId, userId, true);
   }
 
   async removeFromCollection(userId: string, studySetId: string) {
+    this.logger.debug(
+      `Removing study set from collection: studySetId=${studySetId}, userId=${userId}`,
+    );
     const studySet = await this.findStudySetOrFail(studySetId);
     this.assertAccessible(studySet, userId);
 
     if (studySet.userId === userId) {
+      this.logger.warn(
+        `Owner attempted to uncollect own study set: studySetId=${studySetId}, userId=${userId}`,
+      );
       throw new ForbiddenException(
-        'Cannot remove your own module from collection',
+        'Cannot remove your own study set from collection',
       );
     }
 
     await this.favoriteStudySetRepository.delete({ userId, studySetId });
+    this.logger.log(
+      `Study set uncollected: studySetId=${studySetId}, userId=${userId}`,
+    );
 
-    return this.buildModuleForUser(studySetId, userId, true, false);
+    return this.buildStudySetForUser(studySetId, userId, true, false);
   }
 
+  // Section: Single study set retrieval
+
   async getById(userId: string, studySetId: string) {
+    this.logger.debug(
+      `Getting study set by id: studySetId=${studySetId}, userId=${userId}`,
+    );
     const studySet = await this.studySetRepository.findOne({
       where: { id: studySetId },
       relations: ['flashcards'],
     });
 
     if (!studySet) {
-      throw new NotFoundException('Module not found');
+      throw new NotFoundException('Study set not found');
     }
 
     this.assertAccessible(studySet, userId);
@@ -217,8 +278,10 @@ export class ModuleService {
       await this.ensureProgressRecords(userId, sorted.id);
     }
 
-    return this.buildModuleForUser(sorted, userId, true, isCollected);
+    return this.buildStudySetForUser(sorted, userId, true, isCollected);
   }
+
+  // Section: Mapping and progress helpers
 
   private withSortedFlashcards(studySet: StudySet): StudySet {
     if (studySet.flashcards?.length) {
@@ -227,12 +290,12 @@ export class ModuleService {
     return studySet;
   }
 
-  private async buildModuleForUser(
+  private async buildStudySetForUser(
     studySetOrId: StudySet | string,
     userId: string,
-    includeTerms = false,
+    includeFlashcards = false,
     alreadyCollected?: boolean,
-  ): Promise<ModuleResponseDto> {
+  ): Promise<StudySetResponseDto> {
     const studySet =
       typeof studySetOrId === 'string'
         ? await this.studySetRepository.findOne({
@@ -242,7 +305,7 @@ export class ModuleService {
         : studySetOrId;
 
     if (!studySet) {
-      throw new NotFoundException('Module not found');
+      throw new NotFoundException('Study set not found');
     }
 
     this.withSortedFlashcards(studySet);
@@ -250,26 +313,36 @@ export class ModuleService {
     const ownerUserId = studySet.userId;
     const isOwner = ownerUserId === userId;
     const isCollected = alreadyCollected ?? isOwner;
-    const terms = studySet.flashcards || [];
+    const flashcards = studySet.flashcards || [];
 
-    if (isCollected && terms.length) {
+    if (isCollected && flashcards.length) {
       await this.ensureProgressRecords(userId, studySet.id);
     }
 
     const [progress, owner] = await Promise.all([
-      this.calculateProgressForUser(userId, studySet.id, terms, isCollected),
+      this.calculateProgressForUser(
+        userId,
+        studySet.id,
+        flashcards,
+        isCollected,
+      ),
       this.userRepository.findOne({
         where: { id: ownerUserId },
         select: ['id', 'username', 'legacyName', 'profilePicture'],
       }),
     ]);
 
-    const termsWithProgress = includeTerms
-      ? await this.attachTermProgress(userId, studySet.id, terms, isCollected)
+    const flashcardsWithProgress = includeFlashcards
+      ? await this.attachFlashcardProgress(
+          userId,
+          studySet.id,
+          flashcards,
+          isCollected,
+        )
       : undefined;
 
     return plainToInstance(
-      ModuleResponseDto,
+      StudySetResponseDto,
       {
         id: studySet.id,
         slug: studySet.slug,
@@ -281,26 +354,26 @@ export class ModuleService {
         ownerImg: owner?.profilePicture,
         isOwner,
         isCollected,
-        termsCount: terms.length,
+        flashcardsCount: flashcards.length,
         progress,
-        terms: termsWithProgress,
+        flashcards: flashcardsWithProgress,
       },
       { excludeExtraneousValues: true },
     );
   }
 
-  private async attachTermProgress(
+  private async attachFlashcardProgress(
     userId: string,
     studySetId: string,
     flashcards: Flashcard[],
     isCollected: boolean,
-  ): Promise<TermWithProgressDto[]> {
+  ): Promise<FlashcardWithProgressDto[]> {
     if (!flashcards.length) return [];
 
     if (!isCollected) {
       return flashcards.map((card) =>
         plainToInstance(
-          TermWithProgressDto,
+          FlashcardWithProgressDto,
           {
             id: card.id,
             term: card.term,
@@ -323,7 +396,7 @@ export class ModuleService {
     return flashcards.map((card) => {
       const row = progressMap.get(card.id);
       return plainToInstance(
-        TermWithProgressDto,
+        FlashcardWithProgressDto,
         {
           id: card.id,
           term: card.term,
@@ -408,7 +481,10 @@ export class ModuleService {
   private async ensureOwnedStudySet(userId: string, studySetId: string) {
     const studySet = await this.findStudySetOrFail(studySetId);
     if (studySet.userId !== userId) {
-      throw new ForbiddenException('You can only modify your own modules');
+      this.logger.warn(
+        `Forbidden update attempt on non-owned study set: studySetId=${studySetId}, userId=${userId}`,
+      );
+      throw new ForbiddenException('You can only modify your own study sets');
     }
     return studySet;
   }
@@ -416,7 +492,10 @@ export class ModuleService {
   private assertAccessible(studySet: StudySet, userId: string) {
     if (studySet.visibility !== StudySetVisibility.PRIVATE) return;
     if (studySet.userId === userId) return;
-    throw new ForbiddenException('Module is private');
+    this.logger.warn(
+      `Private study set access denied: studySetId=${studySet.id}, userId=${userId}`,
+    );
+    throw new ForbiddenException('Study set is private');
   }
 
   private async findStudySetOrFail(studySetId: string): Promise<StudySet> {
@@ -424,16 +503,19 @@ export class ModuleService {
       where: { id: studySetId },
     });
     if (!studySet) {
-      throw new NotFoundException('Module not found');
+      this.logger.warn(`Study set not found: studySetId=${studySetId}`);
+      throw new NotFoundException('Study set not found');
     }
     return studySet;
   }
 
-  private async buildModulesForUserBatch(
+  // Section: Batch response builders
+
+  private async buildStudySetsForUserBatch(
     studySets: StudySet[],
     userId: string,
-    includeTerms: boolean,
-  ): Promise<ModuleResponseDto[]> {
+    includeFlashcards: boolean,
+  ): Promise<StudySetResponseDto[]> {
     if (!studySets.length) return [];
 
     const studySetIds = studySets.map((m) => m.id);
@@ -460,31 +542,31 @@ export class ModuleService {
         const ownerUserId = studySet.userId;
         const isOwner = ownerUserId === userId;
         const isCollected = isOwner || favoritedIds.has(studySet.id);
-        const terms = studySet.flashcards || [];
+        const flashcards = studySet.flashcards || [];
         const owner = ownerMap.get(ownerUserId);
 
-        if (isCollected && terms.length) {
+        if (isCollected && flashcards.length) {
           await this.ensureProgressRecords(userId, studySet.id);
         }
 
         const progress = await this.calculateProgressForUser(
           userId,
           studySet.id,
-          terms,
+          flashcards,
           isCollected,
         );
 
-        const termsWithProgress = includeTerms
-          ? await this.attachTermProgress(
+        const flashcardsWithProgress = includeFlashcards
+          ? await this.attachFlashcardProgress(
               userId,
               studySet.id,
-              terms,
+              flashcards,
               isCollected,
             )
           : undefined;
 
         return plainToInstance(
-          ModuleResponseDto,
+          StudySetResponseDto,
           {
             id: studySet.id,
             slug: studySet.slug,
@@ -496,9 +578,9 @@ export class ModuleService {
             ownerImg: owner?.profilePicture,
             isOwner,
             isCollected,
-            termsCount: terms.length,
+            flashcardsCount: flashcards.length,
             progress,
-            terms: termsWithProgress,
+            flashcards: flashcardsWithProgress,
           },
           { excludeExtraneousValues: true },
         );

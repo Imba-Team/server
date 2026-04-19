@@ -1,11 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class CreateModuleDto {
+export class CreateStudySetDto {
   @ApiProperty({ example: 'Advanced Biology' })
   @IsString()
   @IsNotEmpty()
-  title: string;
+  title!: string;
 
   @ApiProperty({
     example: 'Notes and flashcards for bio exams',
@@ -14,6 +14,14 @@ export class CreateModuleDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiProperty({
+    example: 'German',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  language?: string;
 
   @ApiProperty({
     example: false,

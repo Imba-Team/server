@@ -78,7 +78,7 @@ export class StudySet {
   testAttempts: TestAttempt[];
 
   @ApiProperty({ example: 0 })
-  termsCount: number;
+  flashcardsCount: number;
 
   @ApiProperty({
     example: { not_started: 0.3, in_progress: 0.4, completed: 0.3 },

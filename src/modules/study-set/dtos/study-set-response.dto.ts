@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Expose, Type } from 'class-transformer';
-import { TermWithProgressDto } from 'src/modules/term/dtos/term-with-progress.dto';
+import { FlashcardWithProgressDto } from 'src/modules/flashcard/dtos/flashcard-with-progress.dto';
 
-export class ModuleResponseDto {
+export class StudySetResponseDto {
   @ApiProperty()
   @Expose()
   id: string;
@@ -45,7 +45,7 @@ export class ModuleResponseDto {
 
   @ApiProperty({ example: 0 })
   @Expose()
-  termsCount?: number;
+  flashcardsCount?: number;
 
   @ApiProperty({
     example: { not_started: 0.3, in_progress: 0.4, completed: 0.3 },
@@ -58,11 +58,11 @@ export class ModuleResponseDto {
   };
 
   @ApiProperty({
-    type: TermWithProgressDto,
+    type: FlashcardWithProgressDto,
     isArray: true,
     required: false,
   })
   @Expose()
-  @Type(() => TermWithProgressDto)
-  terms?: TermWithProgressDto[];
+  @Type(() => FlashcardWithProgressDto)
+  flashcards?: FlashcardWithProgressDto[];
 }

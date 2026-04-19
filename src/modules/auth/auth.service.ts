@@ -124,8 +124,8 @@ export class AuthService {
     this.logger.debug(`Creating user with email: ${dto.email}`);
 
     const user = await this.usersService.create({
+      name: dto.username,
       email: dto.email,
-      name: dto.name,
       password: dto.password,
     });
 

@@ -10,9 +10,9 @@ import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.ent
 import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
 import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
-import { UpdateTermProgressDto } from './dtos/update-term-progress.dto';
+import { UpdateFlashcardProgressDto } from './dtos/update-flashcard-progress.dto';
 import { plainToInstance } from 'class-transformer';
-import { TermWithProgressDto } from './dtos/term-with-progress.dto';
+import { FlashcardWithProgressDto } from './dtos/flashcard-with-progress.dto';
 import { StudySetVisibility } from 'src/infrastructure/persistence/enums';
 import {
   confidenceToStatus,
@@ -21,7 +21,7 @@ import {
 } from 'src/infrastructure/persistence/flashcard-user-state.mapper';
 
 @Injectable()
-export class TermProgressService {
+export class FlashcardProgressService {
   constructor(
     private readonly logger: LoggerService,
     @InjectRepository(Flashcard)
@@ -37,13 +37,13 @@ export class TermProgressService {
   async updateProgress(
     userId: string,
     flashcardId: string,
-    dto: UpdateTermProgressDto,
-  ): Promise<TermWithProgressDto> {
+    dto: UpdateFlashcardProgressDto,
+  ): Promise<FlashcardWithProgressDto> {
     const flashcard = await this.flashcardRepository.findOne({
       where: { id: flashcardId },
     });
     if (!flashcard) {
-      throw new NotFoundException('Term not found');
+      throw new NotFoundException('Flashcard not found');
     }
 
     const studySet = await this.studySetRepository.findOne({
@@ -51,12 +51,12 @@ export class TermProgressService {
     });
 
     if (!studySet) {
-      throw new NotFoundException('Module not found');
+      throw new NotFoundException('Study set not found');
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
     if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
-      throw new ForbiddenException('Module is private');
+      throw new ForbiddenException('Study set is private');
     }
 
     if (!isOwner) {
@@ -65,7 +65,9 @@ export class TermProgressService {
       });
 
       if (!inCollection) {
-        throw new ForbiddenException('Add the module to your collection first');
+        throw new ForbiddenException(
+          'Add the study set to your collection first',
+        );
       }
     } else {
       await this.ensureProgressRecords(userId, studySet.id);
@@ -93,7 +95,7 @@ export class TermProgressService {
     const saved = await this.flashcardUserStateRepository.save(state);
 
     return plainToInstance(
-      TermWithProgressDto,
+      FlashcardWithProgressDto,
       {
         id: flashcard.id,
         term: flashcard.term,
@@ -109,9 +111,9 @@ export class TermProgressService {
     userId: string,
     flashcardId: string,
     success: boolean,
-  ): Promise<TermWithProgressDto> {
+  ): Promise<FlashcardWithProgressDto> {
     this.logger.log(
-      `Attempting to ${success ? 'upgrade' : 'decrease'} status of term with ID: ${flashcardId}`,
+      `Attempting to ${success ? 'upgrade' : 'decrease'} status of flashcard with ID: ${flashcardId}`,
     );
 
     const flashcard = await this.flashcardRepository.findOne({
@@ -119,9 +121,9 @@ export class TermProgressService {
     });
     if (!flashcard) {
       this.logger.warn(
-        `Term with ID ${flashcardId} not found for status update.`,
+        `Flashcard with ID ${flashcardId} not found for status update.`,
       );
-      throw new NotFoundException('Term not found');
+      throw new NotFoundException('Flashcard not found');
     }
 
     const studySet = await this.studySetRepository.findOne({
@@ -129,16 +131,16 @@ export class TermProgressService {
     });
 
     if (!studySet) {
-      this.logger.warn(`Module for term ID ${flashcardId} not found.`);
-      throw new NotFoundException('Module not found');
+      this.logger.warn(`Study set for flashcard ID ${flashcardId} not found.`);
+      throw new NotFoundException('Study set not found');
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
     if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
       this.logger.warn(
-        `User ${userId} attempted to update status of term ${flashcardId} in private module ${studySet.id}`,
+        `User ${userId} attempted to update status of flashcard ${flashcardId} in private study set ${studySet.id}`,
       );
-      throw new ForbiddenException('Module is private');
+      throw new ForbiddenException('Study set is private');
     }
 
     if (!isOwner) {
@@ -148,9 +150,11 @@ export class TermProgressService {
 
       if (!inCollection) {
         this.logger.warn(
-          `User ${userId} attempted to update status of term ${flashcardId} without having module ${studySet.id} in collection`,
+          `User ${userId} attempted to update status of flashcard ${flashcardId} without having study set ${studySet.id} in collection`,
         );
-        throw new ForbiddenException('Add the module to your collection first');
+        throw new ForbiddenException(
+          'Add the study set to your collection first',
+        );
       }
     } else {
       await this.ensureProgressRecords(userId, studySet.id);
@@ -174,10 +178,10 @@ export class TermProgressService {
       state.confidenceLevel = statusToConfidence(newStatus);
       const saved = await this.flashcardUserStateRepository.save(state);
       this.logger.log(
-        `Successfully ${success ? 'upgraded' : 'decreased'} status of term with ID: ${flashcardId} to ${newStatus}`,
+        `Successfully ${success ? 'upgraded' : 'decreased'} status of flashcard with ID: ${flashcardId} to ${newStatus}`,
       );
       return plainToInstance(
-        TermWithProgressDto,
+        FlashcardWithProgressDto,
         {
           id: flashcard.id,
           term: flashcard.term,
@@ -190,7 +194,7 @@ export class TermProgressService {
     }
 
     return plainToInstance(
-      TermWithProgressDto,
+      FlashcardWithProgressDto,
       {
         id: flashcard.id,
         term: flashcard.term,
@@ -205,12 +209,12 @@ export class TermProgressService {
   async getProgress(
     userId: string,
     flashcardId: string,
-  ): Promise<TermWithProgressDto> {
+  ): Promise<FlashcardWithProgressDto> {
     const flashcard = await this.flashcardRepository.findOne({
       where: { id: flashcardId },
     });
     if (!flashcard) {
-      throw new NotFoundException('Term not found');
+      throw new NotFoundException('Flashcard not found');
     }
 
     const studySet = await this.studySetRepository.findOne({
@@ -218,12 +222,12 @@ export class TermProgressService {
     });
 
     if (!studySet) {
-      throw new NotFoundException('Module not found');
+      throw new NotFoundException('Study set not found');
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
     if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
-      throw new ForbiddenException('Module is private');
+      throw new ForbiddenException('Study set is private');
     }
 
     const progressRow = await this.flashcardUserStateRepository.findOne({
@@ -242,7 +246,7 @@ export class TermProgressService {
     }
 
     return plainToInstance(
-      TermWithProgressDto,
+      FlashcardWithProgressDto,
       {
         id: flashcard.id,
         term: flashcard.term,

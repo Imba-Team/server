@@ -1,10 +1,10 @@
 import type { FlashcardUserState } from './entities/flashcard-user-state.entity';
 
-export type TermProgressStatus = 'not_started' | 'in_progress' | 'completed';
+export type FlashcardProgressStatus = 'not_started' | 'in_progress' | 'completed';
 
 export function confidenceToStatus(
   state: FlashcardUserState | null | undefined,
-): TermProgressStatus {
+): FlashcardProgressStatus {
   if (!state) return 'not_started';
   const cl = state.confidenceLevel;
   if (cl >= 0.999) return 'completed';
@@ -12,7 +12,7 @@ export function confidenceToStatus(
   return 'not_started';
 }
 
-export function statusToConfidence(status: TermProgressStatus): number {
+export function statusToConfidence(status: FlashcardProgressStatus): number {
   switch (status) {
     case 'completed':
       return 1;
@@ -24,9 +24,9 @@ export function statusToConfidence(status: TermProgressStatus): number {
 }
 
 export function nextStatusAfterAnswer(
-  current: TermProgressStatus,
+  current: FlashcardProgressStatus,
   success: boolean,
-): TermProgressStatus {
+): FlashcardProgressStatus {
   if (success) {
     if (current === 'not_started') return 'in_progress';
     if (current === 'in_progress') return 'completed';

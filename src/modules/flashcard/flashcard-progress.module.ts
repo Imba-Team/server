@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { TermProgressController } from './term-progress.controller';
-import { TermProgressService } from './term-progress.service';
+import { FlashcardProgressController } from './flashcard-progress.controller';
+import { FlashcardProgressService } from './flashcard-progress.service';
 import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
 import { StudySet } from 'src/infrastructure/persistence/entities/study-set.entity';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
@@ -20,8 +20,8 @@ import { UsersModule } from 'src/modules/users/user.module';
     AuthModule,
     UsersModule,
   ],
-  controllers: [TermProgressController],
-  providers: [TermProgressService],
-  exports: [TermProgressService],
+  controllers: [FlashcardProgressController],
+  providers: [FlashcardProgressService],
+  exports: [FlashcardProgressService],
 })
-export class TermModule {}
+export class FlashcardModule {}

@@ -4,8 +4,8 @@ import { StudySet } from 'src/infrastructure/persistence/entities/study-set.enti
 import { User } from 'src/infrastructure/persistence/entities/user.entity';
 import { UsersModule } from 'src/modules/users/user.module';
 import { AuthModule } from 'src/modules/auth/auth.module';
-import { ModuleController } from './module.controller';
-import { ModuleService } from './module.service';
+import { StudySetController } from './study-set.controller';
+import { StudySetService } from './study-set.service';
 import { FavoriteStudySet } from 'src/infrastructure/persistence/entities/favorite-study-set.entity';
 import { Flashcard } from 'src/infrastructure/persistence/entities/flashcard.entity';
 import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flashcard-user-state.entity';
@@ -22,8 +22,8 @@ import { FlashcardUserState } from 'src/infrastructure/persistence/entities/flas
     UsersModule,
     AuthModule,
   ],
-  controllers: [ModuleController],
-  providers: [ModuleService],
-  exports: [ModuleService],
+  controllers: [StudySetController],
+  providers: [StudySetService],
+  exports: [StudySetService],
 })
-export class ModuleModule {}
+export class StudySetModule {}
