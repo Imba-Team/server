@@ -200,6 +200,8 @@ model FolderStudySet {
 model Tag {
   id          String        @id(map: "PK_8e4052373c579afc1471f526760") @default(uuid()) @db.Uuid
   name        String        @unique
+  slug        String        @unique
+  createdAt   DateTime      @default(now())
   studySetTag StudySetTag[]
 
   @@map("tag")

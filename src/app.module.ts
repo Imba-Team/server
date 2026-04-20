@@ -8,6 +8,7 @@ import { StudySetModule } from './modules/study-set/study-set.module';
 import { FlashcardModule } from './modules/flashcard/flashcard-progress.module';
 import { FavouriteStudySetModule } from './modules/favourite-study-set/favourite-study-set.module';
 import { LibraryModule } from './modules/library/library.module';
+import { TagModule } from './modules/tag/tag.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -34,6 +35,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
     FlashcardModule,
     FavouriteStudySetModule,
     LibraryModule,
+    TagModule,
     ConfigModule.forRoot({ isGlobal: true }),
   ],
 })
