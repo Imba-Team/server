@@ -32,7 +32,7 @@ import { TagService } from './tag.service';
 @ApiTags('Tags')
 @ApiBearerAuth()
 @UseGuards(JwtGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@Roles(Role.USER, Role.ADMIN)
 @Controller('tags')
 export class TagController {
   constructor(private readonly tagService: TagService) {}
@@ -53,6 +53,7 @@ export class TagController {
   }
 
   @Get()
+  @Roles(Role.ADMIN)
   @HttpCode(200)
   @ApiOperation({ summary: 'Get all tags with pagination' })
   @ApiQuery({ name: 'page', required: false })
@@ -86,6 +87,7 @@ export class TagController {
   }
 
   @Get(':id')
+  @Roles(Role.ADMIN)
   @HttpCode(200)
   @ApiOperation({ summary: 'Get a tag by ID' })
   async findOne(@Param('id') id: string): Promise<ResponseDto<TagResponseDto>> {
@@ -114,6 +116,7 @@ export class TagController {
   }
 
   @Delete(':id')
+  @Roles(Role.ADMIN)
   @HttpCode(200)
   @ApiOperation({ summary: 'Delete a tag by ID' })
   async delete(@Param('id') id: string): Promise<ResponseDto<null>> {

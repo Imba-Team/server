@@ -46,6 +46,27 @@ export class TagService {
     });
   }
 
+  async findOrCreateByName(name: string): Promise<Tag> {
+    const slug = slugify(name);
+
+    const existing = await this.prisma.tag.findFirst({
+      where: {
+        OR: [{ slug }, { name }],
+      },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.prisma.tag.create({
+      data: {
+        name,
+        slug,
+      },
+    });
+  }
+
   async findAll(
     page = 1,
     limit = 10,
