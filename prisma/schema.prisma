@@ -177,6 +177,7 @@ model StudySetCollaborator {
 model Folder {
   id             String           @id(map: "PK_6278a41a706740c94c02e288df8") @default(uuid()) @db.Uuid
   userId         String           @db.Uuid
+  name           String           @default("Untitled folder")
   description    String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
