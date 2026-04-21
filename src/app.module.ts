@@ -12,6 +12,7 @@ import { TagModule } from './modules/tag/tag.module';
 import { StudySetTagModule } from './modules/study-set-tag/study-set-tag.module';
 import { FolderModule } from './modules/folder/folder.module';
 import { FolderStudySetModule } from './modules/folder-study-set/folder-study-set.module';
+import { CommentModule } from './modules/comment/comment.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { PrismaModule } from './common/prisma/prisma.module';
@@ -42,6 +43,7 @@ import { PrismaModule } from './common/prisma/prisma.module';
     StudySetTagModule,
     FolderModule,
     FolderStudySetModule,
+    CommentModule,
     ConfigModule.forRoot({ isGlobal: true }),
   ],
 })
