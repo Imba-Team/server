@@ -29,7 +29,7 @@ export class LibraryItemDto {
 
   @ApiProperty()
   @Expose()
-  userId: string;
+  ownerId: string;
 
   @ApiProperty()
   @Expose()

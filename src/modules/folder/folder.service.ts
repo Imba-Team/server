@@ -50,7 +50,7 @@ export class FolderService {
             title: true,
             description: true,
             visibility: true,
-            userId: true,
+            ownerId: true,
           },
         },
       },

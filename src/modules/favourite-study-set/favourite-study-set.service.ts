@@ -23,7 +23,7 @@ export class FavouriteStudySetService {
   async addToLibrary(currentUserId: string, studySetId: string) {
     const studySet = await this.studySetService.findByIdOrFail(studySetId);
 
-    if (studySet.userId === currentUserId) {
+    if (studySet.ownerId === currentUserId) {
       throw new BadRequestException(
         'You cannot save your own study set to your library',
       );
@@ -60,7 +60,7 @@ export class FavouriteStudySetService {
   ): Promise<void> {
     const studySet = await this.studySetService.findByIdOrFail(studySetId);
 
-    if (studySet.userId === currentUserId) {
+    if (studySet.ownerId === currentUserId) {
       throw new ForbiddenException(
         'You cannot unsave your own study set from library',
       );

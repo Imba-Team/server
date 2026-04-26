@@ -3,9 +3,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { FlashcardUserState, StudySetVisibility } from '@prisma/client';
+import { FlashcardUserState } from '@prisma/client';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
+import { StudySetService } from 'src/modules/study-set/study-set.service';
 import { UpdateFlashcardProgressDto } from './dtos/update-flashcard-progress.dto';
 import { plainToInstance } from 'class-transformer';
 import { FlashcardWithProgressDto } from './dtos/flashcard-with-progress.dto';
@@ -20,6 +21,7 @@ export class FlashcardProgressService {
   constructor(
     private readonly logger: LoggerService,
     private readonly prisma: PrismaService,
+    private readonly studySetService: StudySetService,
   ) {}
 
   async updateProgress(
@@ -43,7 +45,8 @@ export class FlashcardProgressService {
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
-    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
+    const canAccess = await this.studySetService.canAccess(userId, studySet.id);
+    if (!canAccess) {
       throw new ForbiddenException('Study set is private');
     }
 
@@ -134,7 +137,8 @@ export class FlashcardProgressService {
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
-    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
+    const canAccess = await this.studySetService.canAccess(userId, studySet.id);
+    if (!canAccess) {
       this.logger.warn(
         `User ${userId} attempted to update status of flashcard ${flashcardId} in private study set ${studySet.id}`,
       );
@@ -231,7 +235,8 @@ export class FlashcardProgressService {
     }
 
     const isOwner = await this.isStudySetOwner(userId, studySet.id);
-    if (studySet.visibility === StudySetVisibility.PRIVATE && !isOwner) {
+    const canAccess = await this.studySetService.canAccess(userId, studySet.id);
+    if (!canAccess) {
       throw new ForbiddenException('Study set is private');
     }
 
@@ -296,8 +301,8 @@ export class FlashcardProgressService {
   ): Promise<boolean> {
     const row = await this.prisma.studySet.findUnique({
       where: { id: studySetId },
-      select: { userId: true },
+      select: { ownerId: true },
     });
-    return row?.userId === userId;
+    return row?.ownerId === userId;
   }
 }

@@ -10,6 +10,7 @@ import { LoggerService } from 'src/common/logger/logger.service';
 import { IUser } from 'src/common/interfaces/user.interface';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { FolderService } from 'src/modules/folder/folder.service';
+import { StudySetService } from 'src/modules/study-set/study-set.service';
 
 import { AddFolderStudySetsDto } from './dto/add-folder-study-sets.dto';
 
@@ -19,6 +20,7 @@ export class FolderStudySetService {
     private readonly logger: LoggerService,
     private readonly prisma: PrismaService,
     private readonly folderService: FolderService,
+    private readonly studySetService: StudySetService,
   ) {
     this.logger.setContext(FolderStudySetService.name);
   }
@@ -37,7 +39,7 @@ export class FolderStudySetService {
       },
       select: {
         id: true,
-        userId: true,
+        ownerId: true,
         visibility: true,
       },
     });
@@ -50,17 +52,20 @@ export class FolderStudySetService {
       );
     }
 
-    const privateNotOwnedIds = studySets
-      .filter(
-        (studySet) =>
-          studySet.userId !== user.id &&
-          studySet.visibility === StudySetVisibility.PRIVATE,
-      )
-      .map((studySet) => studySet.id);
+    const inaccessibleIds: string[] = [];
+    for (const studySet of studySets) {
+      const canAccess = await this.studySetService.canAccess(
+        user.id,
+        studySet.id,
+      );
+      if (!canAccess) {
+        inaccessibleIds.push(studySet.id);
+      }
+    }
 
-    if (privateNotOwnedIds.length > 0) {
+    if (inaccessibleIds.length > 0) {
       throw new ForbiddenException(
-        `Cannot add private study sets you do not own: ${privateNotOwnedIds.join(', ')}`,
+        `Cannot add inaccessible study sets: ${inaccessibleIds.join(', ')}`,
       );
     }
 
@@ -124,7 +129,7 @@ export class FolderStudySetService {
             title: true,
             description: true,
             visibility: true,
-            userId: true,
+            ownerId: true,
           },
         },
       },

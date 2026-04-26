@@ -11,6 +11,7 @@ import { IUser } from 'src/common/interfaces/user.interface';
 import { LoggerService } from 'src/common/logger/logger.service';
 import { PrismaService } from 'src/common/prisma/prisma.service';
 import { slugify } from 'src/common/utils/sligify';
+import { StudySetService } from 'src/modules/study-set/study-set.service';
 
 import { CreateStudySetTagDto } from './dto/create-study-set-tag.dto';
 
@@ -19,6 +20,7 @@ export class StudySetTagService {
   constructor(
     private readonly logger: LoggerService,
     private readonly prisma: PrismaService,
+    private readonly studySetService: StudySetService,
   ) {
     this.logger.setContext(StudySetTagService.name);
   }
@@ -42,7 +44,7 @@ export class StudySetTagService {
       throw new NotFoundException('Tag not found');
     }
 
-    this.assertCanModifyStudySetTags(user, studySet.userId);
+    this.assertCanModifyStudySetTags(user, studySet.ownerId);
 
     const existing = await this.prisma.studySetTag.findUnique({
       where: {
@@ -82,7 +84,7 @@ export class StudySetTagService {
       throw new NotFoundException('Study set tag relation not found');
     }
 
-    this.assertCanModifyStudySetTags(user, existing.studySet.userId);
+    this.assertCanModifyStudySetTags(user, existing.studySet.ownerId);
 
     await this.prisma.studySetTag.delete({
       where: {
@@ -103,7 +105,15 @@ export class StudySetTagService {
       throw new NotFoundException('Study set not found');
     }
 
-    this.assertCanViewStudySet(user, studySet.visibility, studySet.userId);
+    if (user.role !== Role.ADMIN) {
+      const canAccess = await this.studySetService.canAccess(
+        user.id,
+        studySet.id,
+      );
+      if (!canAccess) {
+        throw new ForbiddenException('Study set is private');
+      }
+    }
 
     const links = await this.prisma.studySetTag.findMany({
       where: { studySetId },
@@ -136,7 +146,7 @@ export class StudySetTagService {
             tags: { some: { tagId } },
             OR: [
               { visibility: StudySetVisibility.PUBLIC },
-              { userId: user.id },
+              { ownerId: user.id },
             ],
           };
 
@@ -149,7 +159,7 @@ export class StudySetTagService {
         title: true,
         description: true,
         visibility: true,
-        userId: true,
+        ownerId: true,
       },
     });
   }
@@ -166,24 +176,6 @@ export class StudySetTagService {
       );
     }
   }
-
-  // Read access: private study sets are visible only to owner/admin; public and unlisted remain readable.
-  private assertCanViewStudySet(
-    user: IUser,
-    visibility: StudySetVisibility,
-    ownerId: string,
-  ): void {
-    if (user.role === Role.ADMIN || user.id === ownerId) {
-      return;
-    }
-
-    if (visibility !== StudySetVisibility.PRIVATE) {
-      return;
-    }
-
-    throw new ForbiddenException('Study set is private');
-  }
-
   // Normalizes the incoming tag name into a slug and reuses an existing tag before creating a new one.
   private async findOrCreateTagByName(name: string) {
     const slug = slugify(name);

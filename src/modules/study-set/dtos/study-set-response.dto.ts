@@ -24,7 +24,7 @@ export class StudySetResponseDto {
 
   @ApiProperty({ description: 'Owner id' })
   @Expose()
-  userId: string;
+  ownerId: string;
 
   @ApiProperty({ required: false })
   @Expose()

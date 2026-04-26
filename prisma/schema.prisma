@@ -26,13 +26,12 @@ enum StudySessionMode {
 }
 
 enum CollaboratorRole {
-  OWNER
   EDITOR
   VIEWER
 }
 
 model User {
-  id                 String                 @id(map: "PK_cace4a159ff9f2512dd42373760") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  id                 String                 @id(map: "PK_cace4a159ff9f2512dd42373760") @default(uuid()) @db.Uuid
   email              String                 @unique(map: "UQ_e12875dfb3b1d92d7d7c5377e22") @db.VarChar
   username           String?                @unique(map: "UQ_78a916df40e02a9deb1c4b75edb") @db.VarChar
   password           String
@@ -61,10 +60,10 @@ model StudySet {
   description        String?
   visibility         StudySetVisibility     @default(PUBLIC)
   language           String?
-  userId             String                 @db.Uuid
+  ownerId            String                 @db.Uuid
   createdAt          DateTime               @default(now())
   updatedAt          DateTime               @updatedAt
-  user               User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  owner              User                   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   flashcards         Flashcard[]
   comments           Comment[]
   studySessions      StudySession[]

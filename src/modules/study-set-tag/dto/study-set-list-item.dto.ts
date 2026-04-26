@@ -24,5 +24,5 @@ export class StudySetListItemDto {
 
   @Expose()
   @ApiProperty({ description: 'Owner id' })
-  userId!: string;
+  ownerId!: string;
 }

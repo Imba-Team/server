@@ -14,7 +14,7 @@ type LibraryRawRow = {
   description: string | null;
   visibility: string;
   language: string | null;
-  userId: string;
+  ownerId: string;
   createdAt: Date;
   updatedAt: Date;
   isOwner: boolean;
@@ -41,16 +41,16 @@ export class LibraryService {
         s."description",
         s."visibility",
         s."language",
-        s."userId",
+        s."ownerId",
         s."createdAt",
         s."updatedAt",
-        (s."userId" = ${currentUserId}) AS "isOwner",
+        (s."ownerId" = ${currentUserId}) AS "isOwner",
         (f."id" IS NOT NULL) AS "isFavourited"
       FROM "study_set" s
       LEFT JOIN "favorite_study_set" f
         ON f."studySetId" = s."id"
        AND f."userId" = ${currentUserId}
-      WHERE s."userId" = ${currentUserId}
+      WHERE s."ownerId" = ${currentUserId}
          OR f."userId" = ${currentUserId}
       ORDER BY s."createdAt" DESC
     `);

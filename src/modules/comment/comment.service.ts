@@ -4,14 +4,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  CollaboratorRole,
-  Comment,
-  Prisma,
-  StudySetVisibility,
-} from '@prisma/client';
+import { Comment, Prisma } from '@prisma/client';
 
 import { PrismaService } from 'src/common/prisma/prisma.service';
+import { StudySetService } from 'src/modules/study-set/study-set.service';
 
 import { CommentResponseDto } from './dtos/comment-response.dto';
 import { CreateCommentDto } from './dtos/create-comment.dto';
@@ -31,7 +27,10 @@ type CommentWithAuthor = Comment & {
 
 @Injectable()
 export class CommentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly studySetService: StudySetService,
+  ) {}
 
   async createComment(
     currentUserId: string,
@@ -47,21 +46,12 @@ export class CommentService {
       throw new NotFoundException('Study set not found');
     }
 
-    if (studySet.visibility === StudySetVisibility.PRIVATE) {
-      const collaborator = await this.prisma.studySetCollaborator.findUnique({
-        where: {
-          userId_studySetId: {
-            userId: currentUserId,
-            studySetId,
-          },
-        },
-      });
-
-      if (!collaborator) {
-        throw new ForbiddenException(
-          'You do not have access to this study set',
-        );
-      }
+    const canAccess = await this.studySetService.canAccess(
+      currentUserId,
+      studySetId,
+    );
+    if (!canAccess) {
+      throw new ForbiddenException('You do not have access to this study set');
     }
 
     if (dto.parentCommentId) {
@@ -188,21 +178,10 @@ export class CommentService {
     }
 
     if (existing.userId !== currentUserId) {
-      const collaborator = await this.prisma.studySetCollaborator.findUnique({
-        where: {
-          userId_studySetId: {
-            userId: currentUserId,
-            studySetId: existing.studySetId,
-          },
-        },
-        select: {
-          role: true,
-        },
-      });
-
-      const canModerate =
-        collaborator?.role === CollaboratorRole.OWNER ||
-        collaborator?.role === CollaboratorRole.EDITOR;
+      const canModerate = await this.studySetService.canEdit(
+        currentUserId,
+        existing.studySetId,
+      );
 
       if (!canModerate) {
         throw new ForbiddenException(

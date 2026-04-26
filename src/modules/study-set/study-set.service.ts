@@ -8,7 +8,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, StudySet, StudySetVisibility } from '@prisma/client';
+import {
+  CollaboratorRole,
+  Prisma,
+  StudySet,
+  StudySetVisibility,
+} from '@prisma/client';
 import { plainToInstance } from 'class-transformer';
 
 // Entities and enums
@@ -81,7 +86,7 @@ export class StudySetService {
           dto.isPrivate === true
             ? StudySetVisibility.PRIVATE
             : StudySetVisibility.PUBLIC,
-        userId,
+        ownerId: userId,
       },
     });
 
@@ -141,7 +146,7 @@ export class StudySetService {
   async findCreatedStudySets(userId: string) {
     this.logger.debug(`Listing created study sets for user: ${userId}`);
     const sets = await this.prisma.studySet.findMany({
-      where: { userId },
+      where: { ownerId: userId },
       include: { flashcards: true },
     });
     const sorted = sets.map((s) => this.withSortedFlashcards(s));
@@ -151,7 +156,7 @@ export class StudySetService {
   async findCollection(userId: string) {
     this.logger.debug(`Listing collection study sets for user: ${userId}`);
     const owned = await this.prisma.studySet.findMany({
-      where: { userId },
+      where: { ownerId: userId },
       include: { flashcards: true },
     });
     const favLinks = await this.prisma.favouriteStudySet.findMany({
@@ -206,9 +211,9 @@ export class StudySetService {
       `Adding study set to collection: studySetId=${studySetId}, userId=${userId}`,
     );
     const studySet = await this.findStudySetOrFail(studySetId);
-    this.assertAccessible(studySet, userId);
+    await this.ensureCanAccess(userId, studySet.id);
 
-    if (studySet.userId !== userId) {
+    if (studySet.ownerId !== userId) {
       const exists = await this.prisma.favouriteStudySet.findUnique({
         where: {
           userId_studySetId: { userId, studySetId },
@@ -231,9 +236,9 @@ export class StudySetService {
       `Removing study set from collection: studySetId=${studySetId}, userId=${userId}`,
     );
     const studySet = await this.findStudySetOrFail(studySetId);
-    this.assertAccessible(studySet, userId);
+    await this.ensureCanAccess(userId, studySet.id);
 
-    if (studySet.userId === userId) {
+    if (studySet.ownerId === userId) {
       this.logger.warn(
         `Owner attempted to uncollect own study set: studySetId=${studySetId}, userId=${userId}`,
       );
@@ -267,10 +272,10 @@ export class StudySetService {
       throw new NotFoundException('Study set not found');
     }
 
-    this.assertAccessible(studySet, userId);
+    await this.ensureCanAccess(userId, studySet.id);
 
     const sorted = this.withSortedFlashcards(studySet);
-    const isOwner = sorted.userId === userId;
+    const isOwner = sorted.ownerId === userId;
     const isCollected =
       isOwner ||
       !!(await this.prisma.favouriteStudySet.findUnique({
@@ -316,7 +321,7 @@ export class StudySetService {
 
     this.withSortedFlashcards(studySet);
 
-    const ownerUserId = studySet.userId;
+    const ownerUserId = studySet.ownerId;
     const isOwner = ownerUserId === userId;
     const isCollected =
       alreadyCollected ??
@@ -345,7 +350,7 @@ export class StudySetService {
         title: studySet.title,
         description: studySet.description ?? '',
         isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
-        userId: ownerUserId,
+        ownerId: ownerUserId,
         ownerName: owner?.username ?? undefined,
         ownerImg: owner?.profilePicture,
         isOwner,
@@ -358,7 +363,7 @@ export class StudySetService {
 
   private async ensureOwnedStudySet(userId: string, studySetId: string) {
     const studySet = await this.findStudySetOrFail(studySetId);
-    if (studySet.userId !== userId) {
+    if (studySet.ownerId !== userId) {
       this.logger.warn(
         `Forbidden update attempt on non-owned study set: studySetId=${studySetId}, userId=${userId}`,
       );
@@ -367,13 +372,58 @@ export class StudySetService {
     return studySet;
   }
 
-  private assertAccessible(studySet: StudySet, userId: string) {
-    if (studySet.visibility !== StudySetVisibility.PRIVATE) return;
-    if (studySet.userId === userId) return;
+  async canAccess(userId: string, studySetId: string): Promise<boolean> {
+    const studySet = await this.findStudySetOrFail(studySetId);
+
+    if (studySet.visibility === StudySetVisibility.PUBLIC) return true;
+    if (studySet.visibility === StudySetVisibility.UNLISTED) return true;
+    if (studySet.ownerId === userId) return true;
+
+    const collaborator = await this.prisma.studySetCollaborator.findUnique({
+      where: {
+        userId_studySetId: {
+          userId,
+          studySetId,
+        },
+      },
+      select: { id: true },
+    });
+
+    return !!collaborator;
+  }
+
+  async canEdit(userId: string, studySetId: string): Promise<boolean> {
+    const studySet = await this.findStudySetOrFail(studySetId);
+
+    if (studySet.ownerId === userId) {
+      return true;
+    }
+
+    if (studySet.visibility !== StudySetVisibility.PRIVATE) {
+      return false;
+    }
+
+    const collaborator = await this.prisma.studySetCollaborator.findUnique({
+      where: {
+        userId_studySetId: {
+          userId,
+          studySetId,
+        },
+      },
+      select: { role: true },
+    });
+
+    return collaborator?.role === CollaboratorRole.EDITOR;
+  }
+
+  private async ensureCanAccess(userId: string, studySetId: string) {
+    const allowed = await this.canAccess(userId, studySetId);
+    if (allowed) return;
+
     this.logger.warn(
-      `Private study set access denied: studySetId=${studySet.id}, userId=${userId}`,
+      `Study set access denied: studySetId=${studySetId}, userId=${userId}`,
     );
-    throw new ForbiddenException('Study set is private');
+    throw new ForbiddenException('You do not have access to this study set');
   }
 
   private async findStudySetOrFail(studySetId: string): Promise<StudySet> {
@@ -396,7 +446,7 @@ export class StudySetService {
     if (!studySets.length) return [];
 
     const studySetIds = studySets.map((m) => m.id);
-    const ownerIds = [...new Set(studySets.map((m) => m.userId))];
+    const ownerIds = [...new Set(studySets.map((m) => m.ownerId))];
 
     const [ownerUsers, favoriteLinks] = await Promise.all([
       ownerIds.length
@@ -420,7 +470,7 @@ export class StudySetService {
     return Promise.all(
       studySets.map((studySet) => {
         this.withSortedFlashcards(studySet);
-        const ownerUserId = studySet.userId;
+        const ownerUserId = studySet.ownerId;
         const isOwner = ownerUserId === userId;
         const isCollected = isOwner || favoritedIds.has(studySet.id);
         const flashcards = studySet.flashcards || [];
@@ -434,7 +484,7 @@ export class StudySetService {
             title: studySet.title,
             description: studySet.description ?? '',
             isPrivate: studySet.visibility === StudySetVisibility.PRIVATE,
-            userId: ownerUserId,
+            ownerId: ownerUserId,
             ownerName: owner?.username ?? undefined,
             ownerImg: owner?.profilePicture,
             isOwner,
